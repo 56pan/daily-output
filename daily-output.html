@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>日々のアウトプット</title>
+  <!-- Firebase SDK (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      background: #f0f2f5;
+      color: #333;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ===== HEADER ===== */
+    header {
+      background: #2c3e50;
+      color: white;
+      padding: 10px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      gap: 10px;
+    }
+    header h1 { font-size: 17px; font-weight: 600; letter-spacing: 0.5px; white-space: nowrap; }
+    .header-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .version {
+      font-size: 11px;
+      background: rgba(255,255,255,0.15);
+      padding: 3px 8px;
+      border-radius: 12px;
+    }
+    .storage-badge {
+      font-size: 10px; font-weight: 700;
+      padding: 3px 9px; border-radius: 12px;
+    }
+    .storage-badge.firebase { background: #27ae60; color: white; }
+    .storage-badge.local    { background: rgba(255,255,255,0.1); color: #aaa; }
+
+    /* User info in header */
+    .user-info {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: rgba(255,255,255,0.85);
+    }
+    .user-avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.3);
+      object-fit: cover;
+    }
+    .user-avatar-placeholder {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #3498db;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: white;
+      flex-shrink: 0;
+    }
+    .user-email { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .btn-logout {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: rgba(255,255,255,0.8);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .btn-logout:hover { background: rgba(255,255,255,0.2); }
+
+    /* ===== LOGIN OVERLAY ===== */
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(44,62,80,0.92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      backdrop-filter: blur(3px);
+    }
+    .login-card {
+      background: white;
+      border-radius: 16px;
+      padding: 40px 48px;
+      text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 360px;
+      width: 90%;
+    }
+    .login-card h2 { font-size: 20px; color: #2c3e50; margin-bottom: 8px; }
+    .login-card p  { font-size: 13px; color: #888; margin-bottom: 28px; line-height: 1.6; }
+    .btn-google {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%;
+      background: white;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 14px; font-weight: 600; color: #333;
+      cursor: pointer;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .btn-google:hover { border-color: #4285f4; box-shadow: 0 2px 8px rgba(66,133,244,0.2); }
+    .btn-google svg { flex-shrink: 0; }
+    .login-note { margin-top: 16px; font-size: 11px; color: #bbb; line-height: 1.5; }
+
+    /* ===== LAYOUT ===== */
+    .app-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ===== LEFT PANEL ===== */
+    .left-panel {
+      width: 300px;
+      min-width: 260px;
+      background: white;
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    .calendar-container { padding: 16px; }
+    .calendar-nav {
+      display: flex; justify-content: space-between;
+      align-items: center; margin-bottom: 14px;
+    }
+    .calendar-nav h2 { font-size: 15px; font-weight: 700; color: #2c3e50; }
+    .cal-nav-btn {
+      background: none; border: 1px solid #ddd;
+      cursor: pointer; font-size: 16px; color: #555;
+      padding: 3px 9px; border-radius: 6px; line-height: 1.4;
+      min-width: 34px; min-height: 34px; transition: background 0.15s;
+    }
+    .cal-nav-btn:hover { background: #f5f5f5; }
+
+    .calendar-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; }
+    .cal-header { text-align: center; font-size: 11px; font-weight: 700; color: #999; padding: 4px 0 6px; }
+    .cal-header.sat { color: #3498db; }
+    .cal-header.sun { color: #e74c3c; }
+
+    .cal-day {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      padding-top: 5px; cursor: pointer;
+      border-radius: 8px; min-height: 38px;
+      font-size: 13px; transition: background 0.15s;
+    }
+    .cal-day:hover { background: #f0f4f8; }
+    .cal-day.other-month { color: #ccc; cursor: default; }
+    .cal-day.other-month:hover { background: none; }
+    .day-num {
+      width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 50%;
+    }
+    .cal-day.today .day-num    { background: #2c3e50; color: white; font-weight: 700; }
+    .cal-day.selected .day-num { background: #3498db; color: white; font-weight: 700; }
+    .cal-day.today.selected .day-num { background: #e67e22; }
+    .output-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: #27ae60; margin-top: 2px;
+    }
+    .cal-day.today .output-dot,
+    .cal-day.selected .output-dot { background: rgba(255,255,255,0.85); }
+
+    /* ===== LEFT EXTRA ===== */
+    .left-extra { border-top: 1px solid #f0f0f0; display: flex; flex-direction: column; }
+    .left-section { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }
+    .left-section:last-child { border-bottom: none; }
+    .left-section-title {
+      font-size: 12px; font-weight: 700; color: #555;
+      margin-bottom: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    }
+    .todo-box {
+      background: #fffbf0; border: 1px solid #f0d080;
+      border-left: 3px solid #f39c12; border-radius: 0 6px 6px 0;
+      padding: 8px 10px; font-size: 12px; color: #555;
+      white-space: pre-wrap; line-height: 1.5; word-break: break-word; margin-bottom: 4px;
+    }
+    .left-summary-date { font-size: 11px; font-weight: 700; color: #2c3e50; margin: 6px 0 3px; }
+    .left-summary-item {
+      background: #f8f9fa; border-left: 3px solid #3498db;
+      border-radius: 0 5px 5px 0; padding: 5px 8px;
+      margin-bottom: 4px; font-size: 11px; line-height: 1.5; color: #555;
+    }
+    .left-summary-item strong { color: #3498db; font-size: 11px; }
+    .left-stat { font-size: 11px; color: #999; margin-bottom: 6px; }
+    .left-empty { font-size: 11px; color: #ccc; text-align: center; padding: 8px 0; }
+
+    /* ===== RIGHT PANEL ===== */
+    .right-panel {
+      flex: 1; overflow-y: auto; padding: 16px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+
+    /* ===== SECTIONS ===== */
+    .panel-section {
+      background: white; border-radius: 10px;
+      padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .section-title {
+      font-size: 13px; font-weight: 700; color: #555;
+      margin-bottom: 12px; padding-bottom: 8px;
+      border-bottom: 2px solid #f0f0f0;
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    }
+    .section-title .badge {
+      font-size: 11px; background: #3498db; color: white;
+      padding: 1px 7px; border-radius: 10px;
+    }
+
+    /* ===== SETUP BANNER ===== */
+    .setup-banner {
+      background: #fef9e7; border: 1px solid #f9ca24;
+      border-radius: 10px; padding: 14px 16px;
+      font-size: 12px; color: #555; line-height: 1.7;
+    }
+    .setup-banner h4 { font-size: 13px; color: #e67e22; margin-bottom: 8px; font-weight: 700; }
+    .setup-banner ol { padding-left: 18px; margin-top: 6px; }
+    .setup-banner li { margin-bottom: 4px; }
+    .setup-banner code { background: #f0f0f0; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+
+    /* ===== FORM ===== */
+    .output-form { display: flex; flex-direction: column; gap: 10px; }
+    .form-field { display: flex; flex-direction: column; gap: 4px; }
+    .form-field label { font-size: 12px; font-weight: 700; color: #555; }
+    .form-field textarea {
+      width: 100%; border: 1px solid #ddd; border-radius: 6px;
+      padding: 8px 10px; font-size: 13px; resize: vertical;
+      min-height: 56px; font-family: inherit; color: #333;
+      transition: border-color 0.2s, box-shadow 0.2s; line-height: 1.5;
+    }
+    .form-field textarea:focus {
+      outline: none; border-color: #3498db;
+      box-shadow: 0 0 0 3px rgba(52,152,219,0.12);
+    }
+    .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+
+    /* ===== BUTTONS ===== */
+    .btn {
+      padding: 8px 16px; border: none; border-radius: 6px;
+      cursor: pointer; font-size: 12px; font-weight: 700;
+      transition: opacity 0.15s; min-height: 36px;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary   { background: #3498db; color: white; }
+    .btn-secondary { background: #ecf0f1; color: #555; }
+    .btn-warning   { background: #f39c12; color: white; }
+    .btn-danger    { background: #e74c3c; color: white; }
+    .btn-sm { padding: 5px 10px; font-size: 11px; min-height: 30px; }
+
+    /* ===== OUTPUT ENTRIES ===== */
+    .output-entry {
+      border: 1px solid #e8eaed; border-radius: 8px;
+      padding: 12px 14px; margin-bottom: 10px; transition: border-color 0.2s;
+    }
+    .output-entry:last-child { margin-bottom: 0; }
+    .output-entry:hover { border-color: #c5d3e0; }
+    .output-entry-header {
+      display: flex; justify-content: space-between;
+      align-items: center; margin-bottom: 10px;
+    }
+    .entry-num {
+      font-size: 12px; font-weight: 700; color: #3498db;
+      background: #ebf5fb; padding: 2px 8px; border-radius: 10px;
+    }
+    .entry-actions { display: flex; gap: 6px; }
+    .field-view { display: flex; flex-direction: column; gap: 8px; }
+    .field-item  { display: flex; flex-direction: column; gap: 2px; }
+    .field-label { font-size: 11px; font-weight: 700; color: #999; }
+    .field-value { font-size: 13px; color: #333; white-space: pre-wrap; line-height: 1.5; word-break: break-word; }
+
+    /* ===== SUMMARY ===== */
+    .summary-content { font-size: 13px; color: #555; }
+    .summary-stat { font-size: 12px; color: #888; margin-bottom: 10px; font-weight: 600; }
+    .summary-date-group { margin-bottom: 10px; }
+    .summary-date-label { font-size: 12px; font-weight: 700; color: #2c3e50; margin-bottom: 4px; }
+    .summary-item {
+      background: #f8f9fa; border-left: 3px solid #3498db;
+      border-radius: 0 6px 6px 0; padding: 6px 10px;
+      margin-bottom: 4px; font-size: 12px; line-height: 1.5;
+    }
+    .summary-item strong { color: #3498db; }
+    .summary-item .s-row { color: #555; }
+    .summary-item .s-label { color: #999; font-weight: 700; }
+
+    .empty-message { color: #bbb; font-size: 13px; text-align: center; padding: 16px 0; }
+    .no-date-message {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      height: 200px; color: #bbb; gap: 8px;
+    }
+    .no-date-message p { font-size: 14px; }
+
+    /* ===== URL LINKS ===== */
+    .url-link { color: #2980b9; text-decoration: underline; cursor: pointer; word-break: break-all; }
+    .url-link:hover { color: #1a5f8a; }
+
+    /* ===== MOBILE ===== */
+    @media (max-width: 767px) {
+      body { overflow-y: auto; height: auto; min-height: 100vh; }
+      .app-container { flex-direction: column; overflow: visible; height: auto; }
+      .left-panel {
+        width: 100%; min-width: unset;
+        border-right: none; border-bottom: 1px solid #e0e0e0; overflow-y: visible;
+      }
+      .left-extra { display: none; }
+      .right-panel { overflow-y: visible; padding: 12px; }
+
+      .cal-day { min-height: 44px; }
+      .day-num { width: 30px; height: 30px; font-size: 13px; }
+      .cal-nav-btn { min-width: 40px; min-height: 40px; font-size: 18px; }
+      .calendar-container { padding: 12px; }
+      .panel-section { padding: 12px; }
+
+      header { padding: 10px 14px; }
+      header h1 { font-size: 14px; }
+      .user-email { display: none; }
+
+      .login-card { padding: 32px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Login Overlay -->
+<div class="login-overlay" id="loginOverlay" style="display:none;">
+  <div class="login-card">
+    <h2>日々のアウトプット</h2>
+    <p>データをどのデバイスからでも安全に同期するために、Googleアカウントでログインしてください。</p>
+    <button class="btn-google" onclick="signInWithGoogle()">
+      <!-- Google "G" SVG icon -->
+      <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+        <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+        <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+        <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
+        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+      </svg>
+      Googleでログイン
+    </button>
+    <p class="login-note">ログインすることで、あなたのデータはあなたのGoogleアカウントにのみ紐付けられます。</p>
+  </div>
+</div>
+
+<header>
+  <h1>日々のアウトプット</h1>
+  <div class="header-right">
+    <div class="user-info" id="userInfo" style="display:none;">
+      <img class="user-avatar" id="userAvatar" src="" alt="" onerror="this.style.display='none'">
+      <span class="user-email" id="userEmail"></span>
+      <button class="btn-logout" onclick="signOutUser()">ログアウト</button>
+    </div>
+    <span class="storage-badge local" id="storageBadge">Local</span>
+    <span class="version">v2.1.0</span>
+  </div>
+</header>
+
+<div class="app-container">
+  <div class="left-panel">
+    <div class="calendar-container">
+      <div class="calendar-nav">
+        <button class="cal-nav-btn" id="prevMonth">&#8249;</button>
+        <h2 id="calTitle"></h2>
+        <button class="cal-nav-btn" id="nextMonth">&#8250;</button>
+      </div>
+      <div class="calendar-grid" id="calendarGrid"></div>
+    </div>
+    <div class="left-extra" id="leftExtra"></div>
+  </div>
+  <div class="right-panel" id="rightPanel">
+    <div class="no-date-message"><p>読み込み中...</p></div>
+  </div>
+</div>
+
+<script>
+  // ============================================================
+  //  FIREBASE CONFIG
+  //  Firebaseコンソール → プロジェクト設定 → ウェブアプリ
+  //  の「firebaseConfig」をそのまま貼り付けてください
+  // ============================================================
+  const FIREBASE_CONFIG = {
+    apiKey:            "AIzaSyBw_Xg_La8vRVAHYGfQLLMBJx4HeLEUyOs",
+    authDomain:        "daily-output-40eba.firebaseapp.com",
+    projectId:         "daily-output-40eba",
+    storageBucket:     "daily-output-40eba.firebasestorage.app",
+    messagingSenderId: "751865136950",
+    appId:             "1:751865136950:web:a1b723b1bbc737d46ad597"
+  };
+  // ============================================================
+
+  const VERSION    = 'v2.1.0';
+
+  const FIELD_DEFS = [
+    { key: 'experience',        label: '① 経験' },
+    { key: 'reflection',        label: '② 振り返り' },
+    { key: 'conceptualization', label: '③ 概念化（他の状況への応用・学び）' },
+    { key: 'practice',          label: '④ 実践' },
+    { key: 'notes',             label: '⑤ その他メモ' },
+    { key: 'tomorrow_todo',     label: '⑥ 明日のToDo' },
+  ];
+
+  // --- State ---
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let currentYear    = today.getFullYear();
+  let currentMonth   = today.getMonth();
+  let selectedDate   = null;
+  let localData      = {};
+  let db             = null;
+  let currentUser    = null;
+  let isFirebaseMode = false;
+
+  // ===== UTILITIES =====
+  function formatDate(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  function todayStr() { return formatDate(today); }
+  function formatDateJP(s) {
+    const [y,m,d] = s.split('-');
+    return `${y}年${parseInt(m)}月${parseInt(d)}日`;
+  }
+  function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2,6); }
+  function escHtml(s) {
+    if (!s) return '';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+  }
+  function trunc(s, n) { return (!s||s.length<=n) ? (s||'') : s.substring(0,n)+'…'; }
+  // Ctrl+クリックでURLを開く（通常クリックは無効）
+  function linkifyText(s) {
+    if (!s) return '';
+    return escHtml(s).replace(/(https?:\/\/[^\s<>"&]+)/g, url =>
+      `<a href="${url}" target="_blank" class="url-link" onclick="if(!event.ctrlKey){event.preventDefault()}">${url}</a>`
+    );
+  }
+  function offsetDate(s, days) {
+    const d = new Date(s); d.setDate(d.getDate()+days); return formatDate(d);
+  }
+  function isMobile() { return window.innerWidth < 768; }
+
+  // ===== FIREBASE / AUTH =====
+  function isFirebaseConfigured() {
+    return FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY';
+  }
+
+  function initStorage() {
+    if (isFirebaseConfigured()) {
+      firebase.initializeApp(FIREBASE_CONFIG);
+      db = firebase.firestore();
+
+      // Auth状態の監視
+      firebase.auth().onAuthStateChanged(user => {
+        currentUser = user;
+        if (user) {
+          // ログイン済み
+          document.getElementById('loginOverlay').style.display = 'none';
+          showUserInfo(user);
+          isFirebaseMode = true;
+          const badge = document.getElementById('storageBadge');
+          badge.textContent = 'Firebase';
+          badge.className = 'storage-badge firebase';
+          loadFirestoreData().then(() => init());
+        } else {
+          // 未ログイン → ログイン画面を表示
+          document.getElementById('loginOverlay').style.display = 'flex';
+          document.getElementById('userInfo').style.display = 'none';
+          localData = {};
+        }
+      });
+    } else {
+      // Firebase未設定 → localStorageで動作
+      loadFromLocal();
+      init();
+    }
+  }
+
+  function showUserInfo(user) {
+    const info = document.getElementById('userInfo');
+    const avatar = document.getElementById('userAvatar');
+    const email = document.getElementById('userEmail');
+    if (user.photoURL) { avatar.src = user.photoURL; avatar.style.display = ''; }
+    else               { avatar.style.display = 'none'; }
+    email.textContent = user.email || user.displayName || '';
+    info.style.display = 'flex';
+  }
+
+  function signInWithGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    firebase.auth().signInWithPopup(provider).catch(e => {
+      alert('ログインに失敗しました: ' + e.message);
+    });
+  }
+
+  function signOutUser() {
+    if (!confirm('ログアウトしますか？')) return;
+    firebase.auth().signOut();
+  }
+
+  // ===== DATA LAYER =====
+  // Firestoreのパス: users/{uid}/outputs/{dateStr}
+  function userOutputsRef() {
+    return db.collection('users').doc(currentUser.uid).collection('outputs');
+  }
+
+  async function loadFirestoreData() {
+    try {
+      const snapshot = await userOutputsRef().get();
+      localData = {};
+      snapshot.forEach(doc => { localData[doc.id] = doc.data().entries || []; });
+    } catch (e) {
+      console.error('データ読み込みエラー:', e);
+      alert('データの読み込みに失敗しました: ' + e.message);
+    }
+  }
+
+  function loadFromLocal() {
+    try { localData = JSON.parse(localStorage.getItem('outputData') || '{}'); }
+    catch { localData = {}; }
+  }
+
+  function loadData() { return localData; }
+
+  async function saveDataForDate(dateStr, entries) {
+    if (entries.length === 0) { delete localData[dateStr]; }
+    else { localData[dateStr] = entries; }
+
+    if (isFirebaseMode && db && currentUser) {
+      try {
+        if (entries.length === 0) {
+          await userOutputsRef().doc(dateStr).delete();
+        } else {
+          await userOutputsRef().doc(dateStr).set({ entries });
+        }
+      } catch (e) {
+        console.error('保存エラー:', e);
+        alert('Firebaseへの保存に失敗しました:\n' + e.message);
+      }
+    } else {
+      localStorage.setItem('outputData', JSON.stringify(localData));
+    }
+  }
+
+  // ===== INIT =====
+  function init() {
+    renderCalendar();
+    selectDate(todayStr());
+  }
+
+  // ===== CALENDAR =====
+  function renderCalendar() {
+    const data = loadData();
+    const withOutput = new Set(Object.keys(data).filter(k => (data[k]||[]).length > 0));
+    document.getElementById('calTitle').textContent = `${currentYear}年${currentMonth+1}月`;
+
+    const grid = document.getElementById('calendarGrid');
+    grid.innerHTML = '';
+
+    [
+      {label:'月',cls:''},{label:'火',cls:''},{label:'水',cls:''},
+      {label:'木',cls:''},{label:'金',cls:''},
+      {label:'土',cls:'sat'},{label:'日',cls:'sun'},
+    ].forEach(({label,cls}) => {
+      const h = document.createElement('div');
+      h.className = 'cal-header'+(cls?' '+cls:'');
+      h.textContent = label;
+      grid.appendChild(h);
+    });
+
+    const firstDow = (new Date(currentYear, currentMonth, 1).getDay()+6)%7;
+    const lastDate = new Date(currentYear, currentMonth+1, 0).getDate();
+    const prevLast = new Date(currentYear, currentMonth, 0).getDate();
+
+    for (let i=firstDow-1; i>=0; i--) {
+      const el = document.createElement('div');
+      el.className = 'cal-day other-month';
+      el.innerHTML = `<span class="day-num">${prevLast-i}</span>`;
+      grid.appendChild(el);
+    }
+    for (let d=1; d<=lastDate; d++) {
+      const dateStr = `${currentYear}-${String(currentMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const el = document.createElement('div');
+      el.className = 'cal-day'
+        +(dateStr===todayStr()   ?' today':'')
+        +(dateStr===selectedDate ?' selected':'');
+      el.innerHTML = `<span class="day-num">${d}</span>`
+        +(withOutput.has(dateStr)?`<span class="output-dot"></span>`:'');
+      el.addEventListener('click', () => selectDate(dateStr));
+      grid.appendChild(el);
+    }
+    const rem = (firstDow+lastDate)%7===0 ? 0 : 7-((firstDow+lastDate)%7);
+    for (let i=1; i<=rem; i++) {
+      const el = document.createElement('div');
+      el.className = 'cal-day other-month';
+      el.innerHTML = `<span class="day-num">${i}</span>`;
+      grid.appendChild(el);
+    }
+  }
+
+  function selectDate(dateStr) {
+    selectedDate = dateStr;
+    renderCalendar();
+    renderLeftPanel();
+    renderRightPanel();
+  }
+
+  // ===== LEFT PANEL EXTRA =====
+  function renderLeftPanel() {
+    const extra = document.getElementById('leftExtra');
+    extra.innerHTML = '';
+    if (!selectedDate || isMobile()) return;
+    const data = loadData();
+    appendTodoPrevDay(extra, data);
+    extra.appendChild(buildWeekSummaryLeft(data));
+    extra.appendChild(buildMonthSummaryLeft(data));
+  }
+
+  function appendTodoPrevDay(container, data) {
+    const prev = offsetDate(selectedDate, -1);
+    const todos = (data[prev]||[]).map(o=>o.tomorrow_todo).filter(t=>t&&t.trim());
+    if (!todos.length) return;
+    const sec = document.createElement('div');
+    sec.className = 'left-section';
+    sec.innerHTML = `
+      <div class="left-section-title">前日のToDo
+        <span style="font-size:10px;color:#999;font-weight:400;">${formatDateJP(prev)}より</span>
+      </div>
+      ${todos.map(t=>`<div class="todo-box">${linkifyText(t)}</div>`).join('')}`;
+    container.appendChild(sec);
+  }
+
+  function leftSummaryItem(o, i) {
+    const rows = FIELD_DEFS
+      .filter(f => f.key!=='tomorrow_todo' && o[f.key])
+      .map(f=>`<div><span style="color:#aaa;font-weight:700;">${f.label}：</span>${linkifyText(trunc(o[f.key],40))}</div>`)
+      .join('');
+    return `<div class="left-summary-item"><strong>#${i+1}</strong>${rows}</div>`;
+  }
+
+  function buildWeekSummaryLeft(data) {
+    const sec = document.createElement('div');
+    sec.className = 'left-section';
+    const sel=new Date(selectedDate), dow=(sel.getDay()+6)%7;
+    const mon=new Date(sel); mon.setDate(sel.getDate()-dow);
+    const sun=new Date(mon); sun.setDate(mon.getDate()+6);
+    const wDates=Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return formatDate(d);});
+    const active=wDates.filter(d=>(data[d]||[]).length>0);
+    const total=active.reduce((s,d)=>s+data[d].length,0);
+    const [,mm,md]=formatDate(mon).split('-'), [,sm,sd]=formatDate(sun).split('-');
+    const body=active.length===0
+      ?'<div class="left-empty">今週のアウトプットはありません</div>'
+      :`<div class="left-stat">記録${active.length}日 / 合計${total}件</div>`
+        +active.map(d=>{const[,m2,d2]=d.split('-');return`<div class="left-summary-date">${parseInt(m2)}月${parseInt(d2)}日</div>`+(data[d]||[]).map((o,i)=>leftSummaryItem(o,i)).join('');}).join('');
+    sec.innerHTML=`<div class="left-section-title">週のまとめ <span style="font-size:10px;color:#999;font-weight:400;">${parseInt(mm)}/${parseInt(md)}〜${parseInt(sm)}/${parseInt(sd)}</span></div>${body}`;
+    return sec;
+  }
+
+  function buildMonthSummaryLeft(data) {
+    const sec=document.createElement('div');
+    sec.className='left-section';
+    const sel=new Date(selectedDate), year=sel.getFullYear(), month=sel.getMonth();
+    const active=Object.keys(data).filter(d=>{const dt=new Date(d);return dt.getFullYear()===year&&dt.getMonth()===month&&data[d].length>0;}).sort();
+    const total=active.reduce((s,d)=>s+data[d].length,0);
+    const body=active.length===0
+      ?'<div class="left-empty">今月のアウトプットはありません</div>'
+      :`<div class="left-stat">記録${active.length}日 / 合計${total}件</div>`
+        +active.map(d=>{const[,m2,d2]=d.split('-');return`<div class="left-summary-date">${parseInt(m2)}月${parseInt(d2)}日</div>`+(data[d]||[]).map((o,i)=>leftSummaryItem(o,i)).join('');}).join('');
+    sec.innerHTML=`<div class="left-section-title">月のまとめ <span style="font-size:10px;color:#999;font-weight:400;">${year}年${month+1}月</span></div>${body}`;
+    return sec;
+  }
+
+  // ===== RIGHT PANEL =====
+  function renderRightPanel() {
+    const panel = document.getElementById('rightPanel');
+    panel.innerHTML = '';
+    if (!selectedDate) {
+      panel.innerHTML='<div class="no-date-message"><p>カレンダーから日付を選択してください</p></div>';
+      return;
+    }
+    const data = loadData();
+
+    // Firebase未設定バナー
+    if (!isFirebaseConfigured()) panel.appendChild(buildSetupBanner());
+
+    panel.appendChild(buildNewOutputSection());
+
+    const dayOutputs = data[selectedDate]||[];
+    if (dayOutputs.length>0) panel.appendChild(buildSavedOutputsSection(dayOutputs));
+
+    panel.appendChild(buildDaySummary(data));
+
+    // モバイルは右パネル末尾にToDo・週・月を追加
+    if (isMobile()) {
+      const tmp=document.createElement('div');
+      appendTodoPrevDay(tmp, data);
+      if (tmp.children.length>0) {
+        const wrap=document.createElement('div');
+        wrap.className='panel-section';
+        while(tmp.firstChild) wrap.appendChild(tmp.firstChild);
+        panel.appendChild(wrap);
+      }
+      panel.appendChild(buildWeekSummaryRight(data));
+      panel.appendChild(buildMonthSummaryRight(data));
+    }
+  }
+
+  // --- Setup Banner ---
+  function buildSetupBanner() {
+    const div=document.createElement('div');
+    div.className='setup-banner';
+    div.innerHTML=`
+      <h4>Firebase未設定 — ローカルモードで動作中</h4>
+      <p>スマホとデータを同期するには Firebase の設定が必要です。</p>
+      <ol>
+        <li><a href="https://console.firebase.google.com" target="_blank" class="url-link">console.firebase.google.com</a> でプロジェクト作成</li>
+        <li>Authentication → ログイン方法 → <strong>Google</strong> を有効化</li>
+        <li>Firestore Database を有効化 → ルールを以下に変更：<br>
+          <code>allow read, write: if request.auth != null && request.auth.uid == resource.data.uid;</code>
+        </li>
+        <li>プロジェクト設定 → ウェブアプリ追加 → <code>firebaseConfig</code> をコピー</li>
+        <li>このHTMLの <code>FIREBASE_CONFIG</code> に貼り付けて保存・公開</li>
+      </ol>`;
+    return div;
+  }
+
+  // --- New Output Form ---
+  function buildNewOutputSection() {
+    const sec=document.createElement('div');
+    sec.className='panel-section';
+    sec.innerHTML=`
+      <div class="section-title">新規アウトプット追加
+        <span style="font-size:12px;color:#999;font-weight:400;">${formatDateJP(selectedDate)}</span>
+      </div>
+      <div class="output-form">
+        ${FIELD_DEFS.map(f=>`
+          <div class="form-field">
+            <label>${escHtml(f.label)}</label>
+            <textarea id="nf_${f.key}" placeholder="${fieldPlaceholder(f.key)}" rows="2"></textarea>
+          </div>`).join('')}
+        <div class="form-actions">
+          <button class="btn btn-secondary" onclick="clearNewForm()">クリア</button>
+          <button class="btn btn-primary" onclick="saveNewOutput()">保存</button>
+        </div>
+      </div>`;
+    return sec;
+  }
+
+  function fieldPlaceholder(key) {
+    return ({
+      experience:'今日の経験・出来事...',
+      reflection:'振り返ってみて気づいたこと...',
+      conceptualization:'この経験から学んだこと・他への応用...',
+      practice:'次にどう実践するか...',
+      notes:'その他のメモ、気になったこと...',
+      tomorrow_todo:'明日やること・取り組みたいこと...',
+    })[key]||'';
+  }
+
+  function clearNewForm() {
+    FIELD_DEFS.forEach(f=>{const el=document.getElementById(`nf_${f.key}`);if(el)el.value='';});
+  }
+
+  async function saveNewOutput() {
+    const entry={id:generateId(),createdAt:new Date().toISOString()};
+    FIELD_DEFS.forEach(f=>{entry[f.key]=(document.getElementById(`nf_${f.key}`)?.value||'').trim();});
+    if(!FIELD_DEFS.some(f=>entry[f.key])){alert('少なくとも1つの項目を入力してください。');return;}
+    const data=loadData();
+    await saveDataForDate(selectedDate,[...(data[selectedDate]||[]),entry]);
+    clearNewForm();
+    renderCalendar(); renderLeftPanel(); renderRightPanel();
+  }
+
+  // --- Saved Outputs ---
+  function buildSavedOutputsSection(outputs) {
+    const sec=document.createElement('div');
+    sec.className='panel-section';
+    sec.innerHTML=`<div class="section-title">保存済みアウトプット <span class="badge">${outputs.length}件</span></div>`;
+    outputs.forEach((o,i)=>sec.appendChild(buildOutputEntry(o,i+1)));
+    return sec;
+  }
+
+  function buildOutputEntry(output, num) {
+    const entry=document.createElement('div');
+    entry.className='output-entry';
+    entry.id=`entry_${output.id}`;
+    const viewHtml=FIELD_DEFS.filter(f=>output[f.key])
+      .map(f=>`<div class="field-item"><span class="field-label">${escHtml(f.label)}</span><span class="field-value">${linkifyText(output[f.key])}</span></div>`)
+      .join('');
+    const editHtml=FIELD_DEFS.map(f=>`
+      <div class="form-field">
+        <label>${escHtml(f.label)}</label>
+        <textarea id="ef_${output.id}_${f.key}" rows="2">${escHtml(output[f.key]||'')}</textarea>
+      </div>`).join('');
+    entry.innerHTML=`
+      <div class="output-entry-header">
+        <span class="entry-num">アウトプット #${num}</span>
+        <div class="entry-actions" id="actions_view_${output.id}">
+          <button class="btn btn-warning btn-sm" onclick="startEdit('${output.id}')">編集</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteOutput('${output.id}')">削除</button>
+        </div>
+        <div class="entry-actions" id="actions_edit_${output.id}" style="display:none;">
+          <button class="btn btn-secondary btn-sm" onclick="cancelEdit('${output.id}')">キャンセル</button>
+          <button class="btn btn-primary btn-sm" onclick="saveEdit('${output.id}')">保存</button>
+        </div>
+      </div>
+      <div class="field-view" id="view_${output.id}">${viewHtml||'<span style="color:#ccc;font-size:12px;">（内容なし）</span>'}</div>
+      <div class="output-form" id="edit_${output.id}" style="display:none;">${editHtml}</div>`;
+    return entry;
+  }
+
+  function startEdit(id) {
+    document.getElementById(`view_${id}`).style.display='none';
+    const edit=document.getElementById(`edit_${id}`);
+    edit.style.cssText='display:flex;flex-direction:column;gap:10px;';
+    document.getElementById(`actions_view_${id}`).style.display='none';
+    document.getElementById(`actions_edit_${id}`).style.display='flex';
+  }
+  function cancelEdit(id) {
+    document.getElementById(`view_${id}`).style.display='flex';
+    document.getElementById(`edit_${id}`).style.display='none';
+    document.getElementById(`actions_view_${id}`).style.display='flex';
+    document.getElementById(`actions_edit_${id}`).style.display='none';
+  }
+  async function saveEdit(id) {
+    const data=loadData(), dayData=data[selectedDate];
+    if(!dayData) return;
+    const idx=dayData.findIndex(e=>e.id===id);
+    if(idx===-1) return;
+    FIELD_DEFS.forEach(f=>{dayData[idx][f.key]=(document.getElementById(`ef_${id}_${f.key}`)?.value||'').trim();});
+    dayData[idx].updatedAt=new Date().toISOString();
+    await saveDataForDate(selectedDate, dayData);
+    renderLeftPanel(); renderRightPanel();
+  }
+  async function deleteOutput(id) {
+    if(!confirm('このアウトプットを削除しますか？')) return;
+    const data=loadData();
+    if(data[selectedDate]) await saveDataForDate(selectedDate, data[selectedDate].filter(e=>e.id!==id));
+    renderCalendar(); renderLeftPanel(); renderRightPanel();
+  }
+
+  // --- Summaries ---
+  function summaryItems(outputs) {
+    if(!outputs||!outputs.length) return '';
+    return outputs.map((o,i)=>{
+      const rows=FIELD_DEFS.filter(f=>o[f.key])
+        .map(f=>`<div class="s-row"><span class="s-label">${escHtml(f.label)}：</span>${linkifyText(trunc(o[f.key],60))}</div>`)
+        .join('');
+      return `<div class="summary-item"><strong>#${i+1}</strong>${rows}</div>`;
+    }).join('');
+  }
+
+  function buildDaySummary(data) {
+    const sec=document.createElement('div');
+    sec.className='panel-section';
+    const outputs=data[selectedDate]||[];
+    sec.innerHTML=`
+      <div class="section-title">その日のまとめ
+        <span style="font-weight:400;color:#999;font-size:12px;">${formatDateJP(selectedDate)}</span>
+      </div>
+      <div class="summary-content">
+        ${outputs.length===0
+          ?'<div class="empty-message">この日のアウトプットはありません</div>'
+          :`<div class="summary-stat">アウトプット数：${outputs.length}件</div>${summaryItems(outputs)}`}
+      </div>`;
+    return sec;
+  }
+
+  function buildWeekSummaryRight(data) {
+    const sec=document.createElement('div');
+    sec.className='panel-section';
+    const sel=new Date(selectedDate), dow=(sel.getDay()+6)%7;
+    const mon=new Date(sel); mon.setDate(sel.getDate()-dow);
+    const sun=new Date(mon); sun.setDate(mon.getDate()+6);
+    const wDates=Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return formatDate(d);});
+    const active=wDates.filter(d=>(data[d]||[]).length>0);
+    const total=active.reduce((s,d)=>s+data[d].length,0);
+    const body=active.length===0
+      ?'<div class="empty-message">今週のアウトプットはありません</div>'
+      :`<div class="summary-stat">記録日数：${active.length}日 / 合計：${total}件</div>`
+        +active.map(d=>`<div class="summary-date-group"><div class="summary-date-label">${formatDateJP(d)}</div>${summaryItems(data[d])}</div>`).join('');
+    sec.innerHTML=`
+      <div class="section-title">週のまとめ
+        <span style="font-weight:400;color:#999;font-size:12px;">${formatDateJP(formatDate(mon))} 〜 ${formatDateJP(formatDate(sun))}</span>
+      </div>
+      <div class="summary-content">${body}</div>`;
+    return sec;
+  }
+
+  function buildMonthSummaryRight(data) {
+    const sec=document.createElement('div');
+    sec.className='panel-section';
+    const sel=new Date(selectedDate), year=sel.getFullYear(), month=sel.getMonth();
+    const active=Object.keys(data).filter(d=>{const dt=new Date(d);return dt.getFullYear()===year&&dt.getMonth()===month&&data[d].length>0;}).sort();
+    const total=active.reduce((s,d)=>s+data[d].length,0);
+    const body=active.length===0
+      ?'<div class="empty-message">今月のアウトプットはありません</div>'
+      :`<div class="summary-stat">記録日数：${active.length}日 / 合計：${total}件</div>`
+        +active.map(d=>`<div class="summary-date-group"><div class="summary-date-label">${formatDateJP(d)}</div>${summaryItems(data[d])}</div>`).join('');
+    sec.innerHTML=`
+      <div class="section-title">月のまとめ
+        <span style="font-weight:400;color:#999;font-size:12px;">${year}年${month+1}月</span>
+      </div>
+      <div class="summary-content">${body}</div>`;
+    return sec;
+  }
+
+  // ===== NAVIGATION =====
+  document.getElementById('prevMonth').addEventListener('click', ()=>{
+    if(--currentMonth<0){currentMonth=11;currentYear--;} renderCalendar();
+  });
+  document.getElementById('nextMonth').addEventListener('click', ()=>{
+    if(++currentMonth>11){currentMonth=0;currentYear++;} renderCalendar();
+  });
+  let resizeTimer;
+  window.addEventListener('resize', ()=>{
+    clearTimeout(resizeTimer);
+    resizeTimer=setTimeout(()=>{ if(selectedDate){renderLeftPanel();renderRightPanel();} },150);
+  });
+
+  // ===== START =====
+  initStorage();
+</script>
+</body>
+</html>
