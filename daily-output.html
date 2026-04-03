@@ -636,8 +636,8 @@
     const sec = document.createElement('div');
     sec.className = 'left-section';
     sec.innerHTML = `
-      <div class="left-section-title">前日のToDo
-        <span style="font-size:10px;color:#999;font-weight:400;">${formatDateJP(prev)}より</span>
+      <div class="left-section-title">今日のToDo
+        <span style="font-size:10px;color:#999;font-weight:400;">昨日の⑥より</span>
       </div>
       ${todos.map(t=>`<div class="todo-box">${linkifyText(t)}</div>`).join('')}`;
     container.appendChild(sec);
