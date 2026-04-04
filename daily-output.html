@@ -260,16 +260,17 @@
     .lined-textarea {
       width: 100%;
       border: 1px solid #ddd; border-radius: 6px;
-      padding: 10px 12px;
+      padding: 8px 12px;
       font-size: 13px; font-family: inherit;
-      line-height: 2em;
+      line-height: 26px;
       min-height: 280px;
       resize: vertical;
       background-image: repeating-linear-gradient(
-        transparent, transparent calc(2em - 1px),
-        #e8e8e8 calc(2em - 1px), #e8e8e8 2em
+        transparent, transparent 25px,
+        #e0e0e0 25px, #e0e0e0 26px
       );
-      background-size: 100% 2em;
+      background-size: 100% 26px;
+      background-position: 0 8px;
       background-attachment: local;
       transition: border-color 0.2s, box-shadow 0.2s;
     }
@@ -462,6 +463,8 @@
       Googleでログイン
     </button>
     <p class="login-note">ログインすることで、あなたのデータはあなたのGoogleアカウントにのみ紐付けられます。</p>
+    <hr style="margin:16px 0;border:none;border-top:1px solid #eee;">
+    <button onclick="useLocalMode()" style="width:100%;background:none;border:none;color:#aaa;font-size:12px;cursor:pointer;padding:4px;">ローカルモードで確認する（同期なし）</button>
   </div>
 </div>
 
@@ -493,11 +496,11 @@
       </div>
       <div class="calendar-grid" id="calendarGrid"></div>
     </div>
-    <div class="left-extra" id="leftExtra"></div>
     <div class="memo-buttons-section">
       <button class="btn-memo idea"  onclick="openMemoModal('idea')">アイデアメモ</button>
       <button class="btn-memo maxim" onclick="openMemoModal('maxim')">格言メモ</button>
     </div>
+    <div class="left-extra" id="leftExtra"></div>
   </div>
   <div class="right-panel" id="rightPanel">
     <div class="no-date-message"><p>読み込み中...</p></div>
@@ -614,6 +617,12 @@
     else               { avatar.style.display = 'none'; }
     email.textContent = user.email || user.displayName || '';
     info.style.display = 'flex';
+  }
+
+  function useLocalMode() {
+    document.getElementById('loginOverlay').style.display = 'none';
+    loadFromLocal();
+    init();
   }
 
   function signInWithGoogle() {
