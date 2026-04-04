@@ -219,6 +219,25 @@
     .btn-memo.idea:hover  { background: #f0fff4; }
     .btn-memo.maxim { border-color: #9b59b6; color: #9b59b6; }
     .btn-memo.maxim:hover { background: #f9f0ff; }
+    .btn-memo.goal  { border-color: #e67e22; color: #e67e22; }
+    .btn-memo.goal:hover  { background: #fff8f0; }
+
+    /* ===== GOAL BANNER ===== */
+    .goal-banner {
+      background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+      color: white;
+      padding: 14px 20px;
+      font-size: 20px;
+      font-weight: 700;
+      text-align: center;
+      flex-shrink: 0;
+      border-bottom: 1px solid rgba(0,0,0,0.12);
+      letter-spacing: 0.5px;
+      line-height: 1.4;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .goal-banner:hover { opacity: 0.92; }
 
     /* ===== MAXIM BANNER ===== */
     .maxim-banner {
@@ -431,6 +450,22 @@
 </head>
 <body>
 
+<!-- Goal Modal -->
+<div class="memo-modal" id="goalModal" style="display:none;">
+  <div class="memo-modal-card">
+    <div class="memo-modal-header">
+      <h3>目標</h3>
+      <button class="btn-close-modal" onclick="closeGoalModal()">&#x2715;</button>
+    </div>
+    <textarea class="lined-textarea" id="goalInput" placeholder="あなたの目標を入力してください..." style="min-height:160px;"></textarea>
+    <div class="form-actions" style="margin-top:10px;">
+      <button class="btn btn-secondary" onclick="clearGoal()">クリア</button>
+      <button class="btn btn-secondary" onclick="closeGoalModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveGoal()" style="background:#e67e22;">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- Memo Modal -->
 <div class="memo-modal" id="memoModal" style="display:none;">
   <div class="memo-modal-card">
@@ -477,9 +512,12 @@
       <button class="btn-logout" onclick="signOutUser()">ログアウト</button>
     </div>
     <span class="storage-badge local" id="storageBadge">Local</span>
-    <span class="version">v2.1.0</span>
+    <span class="version">v2.2.0</span>
   </div>
 </header>
+
+<!-- 目標バナー -->
+<div class="goal-banner" id="goalBanner" style="display:none;" onclick="openGoalModal()"></div>
 
 <!-- 格言バナー（格言登録後に表示） -->
 <div class="maxim-banner" id="maximBanner" style="display:none;">
@@ -499,6 +537,7 @@
     <div class="memo-buttons-section">
       <button class="btn-memo idea"  onclick="openMemoModal('idea')">アイデアメモ</button>
       <button class="btn-memo maxim" onclick="openMemoModal('maxim')">格言メモ</button>
+      <button class="btn-memo goal"  onclick="openGoalModal()">目標</button>
     </div>
     <div class="left-extra" id="leftExtra"></div>
   </div>
@@ -686,6 +725,7 @@
   // ===== INIT =====
   function init() {
     updateMaximBanner();
+    updateGoalBanner();
     renderCalendar();
     selectDate(todayStr());
   }
@@ -1048,26 +1088,41 @@
   }
 
   // ===== MEMO DATA =====
-  let memoData = { idea: [], maxim: [] };
+  let memoData = { idea: [], maxim: [], goal: '' };
   let currentMemoType = null;
 
   function loadMemosFromLocal() {
     try {
       memoData.idea  = JSON.parse(localStorage.getItem('ideaMemos')  || '[]');
       memoData.maxim = JSON.parse(localStorage.getItem('maximMemos') || '[]');
-    } catch { memoData = { idea: [], maxim: [] }; }
+      memoData.goal  = localStorage.getItem('goalMemo') || '';
+    } catch { memoData = { idea: [], maxim: [], goal: '' }; }
   }
 
   async function loadMemosFromFirestore() {
     try {
       const ref = db.collection('users').doc(currentUser.uid).collection('memos');
-      const [ideaDoc, maximDoc] = await Promise.all([ref.doc('idea').get(), ref.doc('maxim').get()]);
+      const [ideaDoc, maximDoc, goalDoc] = await Promise.all([
+        ref.doc('idea').get(), ref.doc('maxim').get(), ref.doc('goal').get()
+      ]);
       memoData.idea  = ideaDoc.exists  ? ideaDoc.data().entries  || [] : [];
       memoData.maxim = maximDoc.exists ? maximDoc.data().entries || [] : [];
+      memoData.goal  = goalDoc.exists  ? goalDoc.data().text     || '' : '';
     } catch(e) { console.error('Memo load error:', e); }
   }
 
   async function saveMemos(type) {
+    if (type === 'goal') {
+      if (isFirebaseMode && db && currentUser) {
+        try {
+          await db.collection('users').doc(currentUser.uid)
+                  .collection('memos').doc('goal').set({ text: memoData.goal });
+        } catch(e) { alert('保存エラー: ' + e.message); }
+      } else {
+        localStorage.setItem('goalMemo', memoData.goal);
+      }
+      return;
+    }
     if (isFirebaseMode && db && currentUser) {
       try {
         await db.collection('users').doc(currentUser.uid)
@@ -1087,6 +1142,38 @@
     const idx  = seed % memoData.maxim.length;
     textEl.textContent = `「${memoData.maxim[idx].text}」`;
     banner.style.display = 'block';
+  }
+
+  // 目標バナー
+  function updateGoalBanner() {
+    const banner = document.getElementById('goalBanner');
+    if (!memoData.goal) { banner.style.display = 'none'; return; }
+    banner.textContent = memoData.goal;
+    banner.style.display = 'block';
+  }
+
+  function openGoalModal() {
+    document.getElementById('goalInput').value = memoData.goal || '';
+    document.getElementById('goalModal').style.display = 'flex';
+  }
+
+  function closeGoalModal() {
+    document.getElementById('goalModal').style.display = 'none';
+  }
+
+  async function saveGoal() {
+    memoData.goal = document.getElementById('goalInput').value.trim();
+    await saveMemos('goal');
+    updateGoalBanner();
+    closeGoalModal();
+  }
+
+  async function clearGoal() {
+    if (!confirm('目標をクリアしますか？')) return;
+    memoData.goal = '';
+    await saveMemos('goal');
+    updateGoalBanner();
+    closeGoalModal();
   }
 
   // メモモーダル
@@ -1147,6 +1234,9 @@
   // モーダル外クリックで閉じる
   document.getElementById('memoModal').addEventListener('click', e => {
     if (e.target === document.getElementById('memoModal')) closeMemoModal();
+  });
+  document.getElementById('goalModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('goalModal')) closeGoalModal();
   });
 
   // ===== NAVIGATION =====
