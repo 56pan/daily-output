@@ -202,6 +202,98 @@
     .left-stat { font-size: 11px; color: #999; margin-bottom: 6px; }
     .left-empty { font-size: 11px; color: #ccc; text-align: center; padding: 8px 0; }
 
+    /* ===== MEMO BUTTONS ===== */
+    .memo-buttons-section {
+      padding: 12px 16px;
+      display: flex; gap: 8px;
+      border-top: 1px solid #f0f0f0;
+    }
+    .btn-memo {
+      flex: 1; padding: 9px 6px;
+      border: 1px solid #ddd; border-radius: 8px;
+      background: white; cursor: pointer;
+      font-size: 12px; font-weight: 700; color: #555;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .btn-memo.idea  { border-color: #27ae60; color: #27ae60; }
+    .btn-memo.idea:hover  { background: #f0fff4; }
+    .btn-memo.maxim { border-color: #9b59b6; color: #9b59b6; }
+    .btn-memo.maxim:hover { background: #f9f0ff; }
+
+    /* ===== MAXIM BANNER ===== */
+    .maxim-banner {
+      background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+      color: rgba(255,255,255,0.88);
+      padding: 7px 20px;
+      font-size: 12px; font-style: italic;
+      text-align: center; flex-shrink: 0;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      letter-spacing: 0.3px; line-height: 1.5;
+    }
+
+    /* ===== MEMO MODAL ===== */
+    .memo-modal {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.55);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 200;
+    }
+    .memo-modal-card {
+      background: white; border-radius: 14px;
+      padding: 22px; width: 92%; max-width: 560px;
+      max-height: 88vh; overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    .memo-modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 14px; padding-bottom: 10px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+    .memo-modal-header h3 { font-size: 15px; font-weight: 700; color: #2c3e50; }
+    .btn-close-modal {
+      background: none; border: none; cursor: pointer;
+      font-size: 22px; color: #aaa; line-height: 1; padding: 0 4px;
+    }
+    .btn-close-modal:hover { color: #555; }
+
+    /* 罫線付きテキストエリア */
+    .lined-textarea {
+      width: 100%;
+      border: 1px solid #ddd; border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 13px; font-family: inherit;
+      line-height: 2em;
+      min-height: 280px;
+      resize: vertical;
+      background-image: repeating-linear-gradient(
+        transparent, transparent calc(2em - 1px),
+        #e8e8e8 calc(2em - 1px), #e8e8e8 2em
+      );
+      background-size: 100% 2em;
+      background-attachment: local;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .lined-textarea:focus {
+      outline: none; border-color: #3498db;
+      box-shadow: 0 0 0 3px rgba(52,152,219,0.12);
+    }
+
+    /* Memo entries */
+    .memo-entries-header { font-size: 12px; font-weight: 700; color: #888; margin: 14px 0 8px; }
+    .memo-entry {
+      border: 1px solid #e8eaed; border-radius: 8px;
+      padding: 10px 36px 10px 12px;
+      margin-bottom: 8px; position: relative;
+    }
+    .memo-entry-date { font-size: 11px; color: #aaa; margin-bottom: 4px; }
+    .memo-entry-text { font-size: 13px; color: #333; white-space: pre-wrap; line-height: 1.6; word-break: break-word; }
+    .btn-delete-memo {
+      position: absolute; top: 8px; right: 10px;
+      background: none; border: none; cursor: pointer;
+      font-size: 14px; color: #ccc; padding: 2px;
+    }
+    .btn-delete-memo:hover { color: #e74c3c; }
+
     /* ===== RIGHT PANEL ===== */
     .right-panel {
       flex: 1; overflow-y: auto; padding: 16px;
@@ -338,6 +430,22 @@
 </head>
 <body>
 
+<!-- Memo Modal -->
+<div class="memo-modal" id="memoModal" style="display:none;">
+  <div class="memo-modal-card">
+    <div class="memo-modal-header">
+      <h3 id="memoModalTitle"></h3>
+      <button class="btn-close-modal" onclick="closeMemoModal()">&#x2715;</button>
+    </div>
+    <textarea class="lined-textarea" id="memoInput" placeholder=""></textarea>
+    <div class="form-actions" style="margin-top:10px;">
+      <button class="btn btn-secondary" onclick="closeMemoModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveMemoEntry()">保存</button>
+    </div>
+    <div id="memoEntriesList"></div>
+  </div>
+</div>
+
 <!-- Login Overlay -->
 <div class="login-overlay" id="loginOverlay" style="display:none;">
   <div class="login-card">
@@ -370,6 +478,11 @@
   </div>
 </header>
 
+<!-- 格言バナー（格言登録後に表示） -->
+<div class="maxim-banner" id="maximBanner" style="display:none;">
+  <span id="maximText"></span>
+</div>
+
 <div class="app-container">
   <div class="left-panel">
     <div class="calendar-container">
@@ -381,6 +494,10 @@
       <div class="calendar-grid" id="calendarGrid"></div>
     </div>
     <div class="left-extra" id="leftExtra"></div>
+    <div class="memo-buttons-section">
+      <button class="btn-memo idea"  onclick="openMemoModal('idea')">アイデアメモ</button>
+      <button class="btn-memo maxim" onclick="openMemoModal('maxim')">格言メモ</button>
+    </div>
   </div>
   <div class="right-panel" id="rightPanel">
     <div class="no-date-message"><p>読み込み中...</p></div>
@@ -522,6 +639,7 @@
       const snapshot = await userOutputsRef().get();
       localData = {};
       snapshot.forEach(doc => { localData[doc.id] = doc.data().entries || []; });
+      await loadMemosFromFirestore();
     } catch (e) {
       console.error('データ読み込みエラー:', e);
       alert('データの読み込みに失敗しました: ' + e.message);
@@ -531,6 +649,7 @@
   function loadFromLocal() {
     try { localData = JSON.parse(localStorage.getItem('outputData') || '{}'); }
     catch { localData = {}; }
+    loadMemosFromLocal();
   }
 
   function loadData() { return localData; }
@@ -557,6 +676,7 @@
 
   // ===== INIT =====
   function init() {
+    updateMaximBanner();
     renderCalendar();
     selectDate(todayStr());
   }
@@ -917,6 +1037,108 @@
       <div class="summary-content">${body}</div>`;
     return sec;
   }
+
+  // ===== MEMO DATA =====
+  let memoData = { idea: [], maxim: [] };
+  let currentMemoType = null;
+
+  function loadMemosFromLocal() {
+    try {
+      memoData.idea  = JSON.parse(localStorage.getItem('ideaMemos')  || '[]');
+      memoData.maxim = JSON.parse(localStorage.getItem('maximMemos') || '[]');
+    } catch { memoData = { idea: [], maxim: [] }; }
+  }
+
+  async function loadMemosFromFirestore() {
+    try {
+      const ref = db.collection('users').doc(currentUser.uid).collection('memos');
+      const [ideaDoc, maximDoc] = await Promise.all([ref.doc('idea').get(), ref.doc('maxim').get()]);
+      memoData.idea  = ideaDoc.exists  ? ideaDoc.data().entries  || [] : [];
+      memoData.maxim = maximDoc.exists ? maximDoc.data().entries || [] : [];
+    } catch(e) { console.error('Memo load error:', e); }
+  }
+
+  async function saveMemos(type) {
+    if (isFirebaseMode && db && currentUser) {
+      try {
+        await db.collection('users').doc(currentUser.uid)
+                .collection('memos').doc(type).set({ entries: memoData[type] });
+      } catch(e) { alert('保存エラー: ' + e.message); }
+    } else {
+      localStorage.setItem(type === 'idea' ? 'ideaMemos' : 'maximMemos', JSON.stringify(memoData[type]));
+    }
+  }
+
+  // 格言バナー（日付ベースのシードでランダム選択）
+  function updateMaximBanner() {
+    const banner = document.getElementById('maximBanner');
+    const textEl = document.getElementById('maximText');
+    if (!memoData.maxim || memoData.maxim.length === 0) { banner.style.display = 'none'; return; }
+    const seed = parseInt(todayStr().replace(/-/g, ''));
+    const idx  = seed % memoData.maxim.length;
+    textEl.textContent = `「${memoData.maxim[idx].text}」`;
+    banner.style.display = 'block';
+  }
+
+  // メモモーダル
+  function openMemoModal(type) {
+    currentMemoType = type;
+    const titles = { idea: 'アイデアメモ', maxim: '格言メモ' };
+    const placeholders = {
+      idea:  'アイデアを自由に書き留めてください...',
+      maxim: '心に残る格言・言葉を記録してください...',
+    };
+    document.getElementById('memoModalTitle').textContent = titles[type];
+    const input = document.getElementById('memoInput');
+    input.placeholder = placeholders[type];
+    input.value = '';
+    renderMemoEntries();
+    document.getElementById('memoModal').style.display = 'flex';
+  }
+
+  function closeMemoModal() {
+    document.getElementById('memoModal').style.display = 'none';
+    currentMemoType = null;
+  }
+
+  async function saveMemoEntry() {
+    const text = document.getElementById('memoInput').value.trim();
+    if (!text) { alert('内容を入力してください。'); return; }
+    memoData[currentMemoType].unshift({ id: generateId(), text, createdAt: new Date().toISOString() });
+    await saveMemos(currentMemoType);
+    document.getElementById('memoInput').value = '';
+    renderMemoEntries();
+    if (currentMemoType === 'maxim') updateMaximBanner();
+  }
+
+  async function deleteMemoEntry(type, id) {
+    if (!confirm('削除しますか？')) return;
+    memoData[type] = memoData[type].filter(e => e.id !== id);
+    await saveMemos(type);
+    renderMemoEntries();
+    if (type === 'maxim') updateMaximBanner();
+  }
+
+  function renderMemoEntries() {
+    const list    = document.getElementById('memoEntriesList');
+    const entries = memoData[currentMemoType] || [];
+    if (entries.length === 0) { list.innerHTML = '<div class="empty-message">まだ登録がありません</div>'; return; }
+    list.innerHTML = `<div class="memo-entries-header">保存済み（${entries.length}件）</div>`;
+    entries.forEach(e => {
+      const div = document.createElement('div');
+      div.className = 'memo-entry';
+      div.innerHTML = `
+        <div class="memo-entry-date">${new Date(e.createdAt).toLocaleDateString('ja-JP')}</div>
+        <div class="memo-entry-text">${linkifyText(e.text)}</div>
+        <button class="btn-delete-memo" onclick="deleteMemoEntry('${currentMemoType}','${e.id}')">&#x2715;</button>`;
+      list.appendChild(div);
+    });
+  }
+
+  // モーダル外クリックで閉じる
+  document.getElementById('memoModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('memoModal')) closeMemoModal();
+  });
 
   // ===== NAVIGATION =====
   document.getElementById('prevMonth').addEventListener('click', ()=>{
