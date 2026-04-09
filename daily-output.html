@@ -186,11 +186,21 @@
       font-size: 12px; font-weight: 700; color: #555;
       margin-bottom: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
     }
-    .todo-box {
+    .todo-item {
+      display: flex; align-items: flex-start; gap: 8px;
       background: #fffbf0; border: 1px solid #f0d080;
       border-left: 3px solid #f39c12; border-radius: 0 6px 6px 0;
       padding: 8px 10px; font-size: 12px; color: #555;
-      white-space: pre-wrap; line-height: 1.5; word-break: break-word; margin-bottom: 4px;
+      line-height: 1.5; word-break: break-word; margin-bottom: 4px;
+      cursor: pointer;
+    }
+    .todo-item input[type="checkbox"] {
+      margin-top: 2px; flex-shrink: 0;
+      width: 14px; height: 14px; cursor: pointer; accent-color: #f39c12;
+    }
+    .todo-item-text { flex: 1; }
+    .todo-item input[type="checkbox"]:checked + .todo-item-text {
+      text-decoration: line-through; color: #bbb;
     }
     .left-summary-date { font-size: 11px; font-weight: 700; color: #2c3e50; margin: 6px 0 3px; }
     .left-summary-item {
@@ -512,7 +522,7 @@
       <button class="btn-logout" onclick="signOutUser()">ログアウト</button>
     </div>
     <span class="storage-badge local" id="storageBadge">Local</span>
-    <span class="version">v2.2.0</span>
+    <span class="version">v2.3.0</span>
   </div>
 </header>
 
@@ -562,15 +572,16 @@
   };
   // ============================================================
 
-  const VERSION    = 'v2.1.0';
+  const VERSION    = 'v2.3.0';
 
   const FIELD_DEFS = [
     { key: 'experience',        label: '① 経験' },
     { key: 'reflection',        label: '② 振り返り' },
     { key: 'conceptualization', label: '③ 概念化（他の状況への応用・学び）' },
     { key: 'practice',          label: '④ 実践' },
-    { key: 'notes',             label: '⑤ その他メモ' },
-    { key: 'tomorrow_todo',     label: '⑥ 明日のToDo' },
+    { key: 'whywhy',            label: '⑤ なぜなぜ分析' },
+    { key: 'notes',             label: '⑥ その他メモ' },
+    { key: 'tomorrow_todo',     label: '⑦ 明日のToDo' },
   ];
 
   // --- State ---
@@ -800,15 +811,20 @@
 
   function appendTodoPrevDay(container, data) {
     const prev = offsetDate(selectedDate, -1);
-    const todos = (data[prev]||[]).map(o=>o.tomorrow_todo).filter(t=>t&&t.trim());
-    if (!todos.length) return;
+    const lines = (data[prev]||[]).flatMap(o =>
+      (o.tomorrow_todo||'').split('\n').map(l=>l.trim()).filter(l=>l)
+    );
+    if (!lines.length) return;
     const sec = document.createElement('div');
     sec.className = 'left-section';
+    const itemsHtml = lines.map(t =>
+      `<label class="todo-item"><input type="checkbox"><span class="todo-item-text">${linkifyText(t)}</span></label>`
+    ).join('');
     sec.innerHTML = `
       <div class="left-section-title">今日のToDo
-        <span style="font-size:10px;color:#999;font-weight:400;">昨日の⑥より</span>
+        <span style="font-size:10px;color:#999;font-weight:400;">昨日の⑦より</span>
       </div>
-      ${todos.map(t=>`<div class="todo-box">${linkifyText(t)}</div>`).join('')}`;
+      ${itemsHtml}`;
     container.appendChild(sec);
   }
 
@@ -934,6 +950,7 @@
       reflection:'振り返ってみて気づいたこと...',
       conceptualization:'この経験から学んだこと・他への応用...',
       practice:'次にどう実践するか...',
+      whywhy:'なぜ？を繰り返して根本原因を探る...',
       notes:'その他のメモ、気になったこと...',
       tomorrow_todo:'明日やること・取り組みたいこと...',
     })[key]||'';
