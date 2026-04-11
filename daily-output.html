@@ -215,11 +215,11 @@
     /* ===== MEMO BUTTONS ===== */
     .memo-buttons-section {
       padding: 12px 16px;
-      display: flex; gap: 8px;
+      display: flex; gap: 8px; flex-wrap: wrap;
       border-top: 1px solid #f0f0f0;
     }
     .btn-memo {
-      flex: 1; padding: 9px 6px;
+      flex: 1 1 calc(50% - 4px); padding: 9px 6px;
       border: 1px solid #ddd; border-radius: 8px;
       background: white; cursor: pointer;
       font-size: 12px; font-weight: 700; color: #555;
@@ -231,6 +231,8 @@
     .btn-memo.maxim:hover { background: #f9f0ff; }
     .btn-memo.goal  { border-color: #e67e22; color: #e67e22; }
     .btn-memo.goal:hover  { background: #fff8f0; }
+    .btn-memo.learning { border-color: #2980b9; color: #2980b9; }
+    .btn-memo.learning:hover { background: #f0f8ff; }
 
     /* ===== GOAL BANNER ===== */
     .goal-banner {
@@ -460,6 +462,17 @@
 </head>
 <body>
 
+<!-- Learning Modal -->
+<div class="memo-modal" id="learningModal" style="display:none;">
+  <div class="memo-modal-card">
+    <div class="memo-modal-header">
+      <h3>学びの一覧</h3>
+      <button class="btn-close-modal" onclick="closeLearningModal()">&#x2715;</button>
+    </div>
+    <div id="learningList"></div>
+  </div>
+</div>
+
 <!-- Goal Modal -->
 <div class="memo-modal" id="goalModal" style="display:none;">
   <div class="memo-modal-card">
@@ -522,7 +535,7 @@
       <button class="btn-logout" onclick="signOutUser()">ログアウト</button>
     </div>
     <span class="storage-badge local" id="storageBadge">Local</span>
-    <span class="version">v2.3.0</span>
+    <span class="version">v2.4.0</span>
   </div>
 </header>
 
@@ -545,9 +558,10 @@
       <div class="calendar-grid" id="calendarGrid"></div>
     </div>
     <div class="memo-buttons-section">
-      <button class="btn-memo idea"  onclick="openMemoModal('idea')">アイデアメモ</button>
-      <button class="btn-memo maxim" onclick="openMemoModal('maxim')">格言メモ</button>
-      <button class="btn-memo goal"  onclick="openGoalModal()">目標</button>
+      <button class="btn-memo idea"     onclick="openMemoModal('idea')">アイデアメモ</button>
+      <button class="btn-memo maxim"    onclick="openMemoModal('maxim')">格言メモ</button>
+      <button class="btn-memo goal"     onclick="openGoalModal()">目標</button>
+      <button class="btn-memo learning" onclick="openLearningModal()">学びの一覧</button>
     </div>
     <div class="left-extra" id="leftExtra"></div>
   </div>
@@ -572,7 +586,7 @@
   };
   // ============================================================
 
-  const VERSION    = 'v2.3.0';
+  const VERSION    = 'v2.4.0';
 
   const FIELD_DEFS = [
     { key: 'experience',        label: '① 経験' },
@@ -809,22 +823,43 @@
     extra.appendChild(buildMonthSummaryLeft(data));
   }
 
+  function loadTodoChecks(dateStr) {
+    try { return JSON.parse(localStorage.getItem(`todoChecks_${dateStr}`) || '{}'); }
+    catch { return {}; }
+  }
+  function saveTodoCheck(dateStr, text, checked) {
+    const checks = loadTodoChecks(dateStr);
+    checks[text] = checked;
+    localStorage.setItem(`todoChecks_${dateStr}`, JSON.stringify(checks));
+  }
+
   function appendTodoPrevDay(container, data) {
     const prev = offsetDate(selectedDate, -1);
     const lines = (data[prev]||[]).flatMap(o =>
       (o.tomorrow_todo||'').split('\n').map(l=>l.trim()).filter(l=>l)
     );
     if (!lines.length) return;
+    const checks = loadTodoChecks(selectedDate);
     const sec = document.createElement('div');
     sec.className = 'left-section';
-    const itemsHtml = lines.map(t =>
-      `<label class="todo-item"><input type="checkbox"><span class="todo-item-text">${linkifyText(t)}</span></label>`
-    ).join('');
-    sec.innerHTML = `
-      <div class="left-section-title">今日のToDo
-        <span style="font-size:10px;color:#999;font-weight:400;">昨日の⑦より</span>
-      </div>
-      ${itemsHtml}`;
+    const title = document.createElement('div');
+    title.className = 'left-section-title';
+    title.innerHTML = `今日のToDo <span style="font-size:10px;color:#999;font-weight:400;">昨日の⑦より</span>`;
+    sec.appendChild(title);
+    lines.forEach(t => {
+      const label = document.createElement('label');
+      label.className = 'todo-item';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!checks[t];
+      cb.addEventListener('change', () => saveTodoCheck(selectedDate, t, cb.checked));
+      const span = document.createElement('span');
+      span.className = 'todo-item-text';
+      span.innerHTML = linkifyText(t);
+      label.appendChild(cb);
+      label.appendChild(span);
+      sec.appendChild(label);
+    });
     container.appendChild(sec);
   }
 
@@ -1248,12 +1283,64 @@
     });
   }
 
+  // ===== 学びの一覧 =====
+  const LEARNING_KEYS = ['conceptualization', 'practice', 'whywhy'];
+  const LEARNING_LABELS = {
+    conceptualization: '③ 概念化',
+    practice:          '④ 実践',
+    whywhy:            '⑤ なぜなぜ分析',
+  };
+
+  function openLearningModal() {
+    renderLearningList();
+    document.getElementById('learningModal').style.display = 'flex';
+  }
+  function closeLearningModal() {
+    document.getElementById('learningModal').style.display = 'none';
+  }
+  function renderLearningList() {
+    const list = document.getElementById('learningList');
+    const data = loadData();
+    const dates = Object.keys(data)
+      .filter(d => (data[d]||[]).some(o => LEARNING_KEYS.some(k => o[k])))
+      .sort().reverse();
+    if (dates.length === 0) {
+      list.innerHTML = '<div class="empty-message">まだ記録がありません</div>';
+      return;
+    }
+    list.innerHTML = '';
+    dates.forEach(dateStr => {
+      const entries = data[dateStr] || [];
+      const dateDiv = document.createElement('div');
+      dateDiv.style.marginBottom = '16px';
+      const dateLabel = document.createElement('div');
+      dateLabel.className = 'memo-entries-header';
+      dateLabel.textContent = formatDateJP(dateStr);
+      dateDiv.appendChild(dateLabel);
+      entries.forEach(o => {
+        LEARNING_KEYS.forEach(key => {
+          if (!o[key]) return;
+          const item = document.createElement('div');
+          item.className = 'memo-entry';
+          item.innerHTML = `
+            <div class="memo-entry-date">${LEARNING_LABELS[key]}</div>
+            <div class="memo-entry-text">${linkifyText(o[key])}</div>`;
+          dateDiv.appendChild(item);
+        });
+      });
+      list.appendChild(dateDiv);
+    });
+  }
+
   // モーダル外クリックで閉じる
   document.getElementById('memoModal').addEventListener('click', e => {
     if (e.target === document.getElementById('memoModal')) closeMemoModal();
   });
   document.getElementById('goalModal').addEventListener('click', e => {
     if (e.target === document.getElementById('goalModal')) closeGoalModal();
+  });
+  document.getElementById('learningModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('learningModal')) closeLearningModal();
   });
 
   // ===== NAVIGATION =====
