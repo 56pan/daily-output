@@ -319,6 +319,22 @@
     }
     .memo-entry-date { font-size: 11px; color: #aaa; margin-bottom: 4px; }
     .memo-entry-text { font-size: 13px; color: #333; white-space: pre-wrap; line-height: 1.6; word-break: break-word; }
+
+    /* ===== LEARNING MODAL ===== */
+    .learning-date-header {
+      font-size: 13px; font-weight: 700; color: #2c3e50;
+      border-bottom: 2px solid #2c3e50;
+      padding-bottom: 4px; margin: 14px 0 8px;
+    }
+    .learning-date-header:first-child { margin-top: 0; }
+    .learning-entry { border: 1px solid #e8eaed; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+    .learning-entry-label { font-size: 11px; color: #888; font-weight: 700; margin-bottom: 4px; }
+    .learning-entry-text { font-size: 13px; color: #333; white-space: pre-wrap; line-height: 1.6; word-break: break-word; }
+    .learning-entry.conceptualization {
+      border: 2px solid #3498db;
+      background: #f0f8ff;
+    }
+    .learning-entry.conceptualization .learning-entry-label { color: #2980b9; }
     .btn-delete-memo {
       position: absolute; top: 8px; right: 10px;
       background: none; border: none; cursor: pointer;
@@ -1312,19 +1328,18 @@
     dates.forEach(dateStr => {
       const entries = data[dateStr] || [];
       const dateDiv = document.createElement('div');
-      dateDiv.style.marginBottom = '16px';
       const dateLabel = document.createElement('div');
-      dateLabel.className = 'memo-entries-header';
+      dateLabel.className = 'learning-date-header';
       dateLabel.textContent = formatDateJP(dateStr);
       dateDiv.appendChild(dateLabel);
       entries.forEach(o => {
         LEARNING_KEYS.forEach(key => {
           if (!o[key]) return;
           const item = document.createElement('div');
-          item.className = 'memo-entry';
+          item.className = `learning-entry${key === 'conceptualization' ? ' conceptualization' : ''}`;
           item.innerHTML = `
-            <div class="memo-entry-date">${LEARNING_LABELS[key]}</div>
-            <div class="memo-entry-text">${linkifyText(o[key])}</div>`;
+            <div class="learning-entry-label">${LEARNING_LABELS[key]}</div>
+            <div class="learning-entry-text">${linkifyText(o[key])}</div>`;
           dateDiv.appendChild(item);
         });
       });
