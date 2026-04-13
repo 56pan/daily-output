@@ -610,8 +610,9 @@
     { key: 'conceptualization', label: '③ 概念化（他の状況への応用・学び）' },
     { key: 'practice',          label: '④ 実践' },
     { key: 'whywhy',            label: '⑤ なぜなぜ分析' },
-    { key: 'notes',             label: '⑥ その他メモ' },
-    { key: 'tomorrow_todo',     label: '⑦ 明日のToDo' },
+    { key: 'tgt',               label: '⑥ TGT（Three Good Things）' },
+    { key: 'notes',             label: '⑦ その他メモ' },
+    { key: 'tomorrow_todo',     label: '⑧ 明日のToDo' },
   ];
 
   // --- State ---
@@ -860,7 +861,7 @@
     sec.className = 'left-section';
     const title = document.createElement('div');
     title.className = 'left-section-title';
-    title.innerHTML = `今日のToDo <span style="font-size:10px;color:#999;font-weight:400;">昨日の⑦より</span>`;
+    title.innerHTML = `今日のToDo <span style="font-size:10px;color:#999;font-weight:400;">昨日の⑧より</span>`;
     sec.appendChild(title);
     lines.forEach(t => {
       const label = document.createElement('label');
@@ -1002,6 +1003,7 @@
       conceptualization:'この経験から学んだこと・他への応用...',
       practice:'次にどう実践するか...',
       whywhy:'なぜ？を繰り返して根本原因を探る...',
+      tgt:'その日の良かったことのタイトル、詳細、自分の気持ち',
       notes:'その他のメモ、気になったこと...',
       tomorrow_todo:'明日やること・取り組みたいこと...',
     })[key]||'';
