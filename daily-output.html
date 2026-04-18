@@ -609,10 +609,11 @@
     { key: 'reflection',        label: '② 振り返り' },
     { key: 'conceptualization', label: '③ 概念化（他の状況への応用・学び）' },
     { key: 'practice',          label: '④ 実践' },
-    { key: 'whywhy',            label: '⑤ なぜなぜ分析' },
-    { key: 'tgt',               label: '⑥ TGT（Three Good Things）' },
-    { key: 'notes',             label: '⑦ その他メモ' },
-    { key: 'tomorrow_todo',     label: '⑧ 明日のToDo' },
+    { key: 'concrete_abstract', label: '⑤ 具体→抽象→具体' },
+    { key: 'whywhy',            label: '⑥ なぜなぜ分析' },
+    { key: 'tgt',               label: '⑦ TGT（Three Good Things）' },
+    { key: 'notes',             label: '⑧ その他メモ' },
+    { key: 'tomorrow_todo',     label: '⑨ 明日のToDo' },
   ];
 
   // --- State ---
@@ -861,7 +862,7 @@
     sec.className = 'left-section';
     const title = document.createElement('div');
     title.className = 'left-section-title';
-    title.innerHTML = `今日のToDo <span style="font-size:10px;color:#999;font-weight:400;">昨日の⑧より</span>`;
+    title.innerHTML = `今日のToDo <span style="font-size:10px;color:#999;font-weight:400;">昨日の⑨より</span>`;
     sec.appendChild(title);
     lines.forEach(t => {
       const label = document.createElement('label');
@@ -1003,6 +1004,7 @@
       conceptualization:'この経験から学んだこと・他への応用...',
       practice:'次にどう実践するか...',
       whywhy:'なぜ？を繰り返して根本原因を探る...',
+      concrete_abstract:'具体的な経験から抽象的な法則・原則を見つけ、別の場面へ応用する...',
       tgt:'その日の良かったことのタイトル、詳細、自分の気持ち',
       notes:'その他のメモ、気になったこと...',
       tomorrow_todo:'明日やること・取り組みたいこと...',
