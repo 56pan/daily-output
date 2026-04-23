@@ -447,6 +447,41 @@
     }
     .no-date-message p { font-size: 14px; }
 
+    /* ===== GOAL SECTION IN SUMMARY ===== */
+    .goal-section {
+      background: #fff8f0; border: 1px solid #f5c98a;
+      border-left: 3px solid #e67e22; border-radius: 0 6px 6px 0;
+      padding: 7px 10px; margin-bottom: 8px;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .goal-section:hover { background: #fff0e0; }
+    .goal-section-label {
+      font-size: 10px; font-weight: 700; color: #e67e22;
+      margin-bottom: 3px; display: flex; align-items: center; gap: 4px;
+    }
+    .goal-section-text { font-size: 12px; color: #555; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+    .goal-section-empty { font-size: 11px; color: #ccc; font-style: italic; }
+
+    /* ===== GOAL MODAL SECTIONS ===== */
+    .goal-modal-section { margin-bottom: 16px; }
+    .goal-modal-section-title {
+      font-size: 12px; font-weight: 700; color: #555;
+      margin-bottom: 6px; padding-bottom: 5px;
+      border-bottom: 1px solid #f0f0f0;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .goal-modal-section-title span { font-size: 10px; color: #999; font-weight: 400; }
+    .goal-modal-textarea {
+      width: 100%; border: 1px solid #ddd; border-radius: 6px;
+      padding: 8px 10px; font-size: 13px; font-family: inherit;
+      resize: vertical; min-height: 72px; line-height: 1.5;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .goal-modal-textarea:focus {
+      outline: none; border-color: #e67e22;
+      box-shadow: 0 0 0 3px rgba(230,126,34,0.12);
+    }
+
     /* ===== URL LINKS ===== */
     .url-link { color: #2980b9; text-decoration: underline; cursor: pointer; word-break: break-all; }
     .url-link:hover { color: #1a5f8a; }
@@ -493,12 +528,22 @@
 <div class="memo-modal" id="goalModal" style="display:none;">
   <div class="memo-modal-card">
     <div class="memo-modal-header">
-      <h3>目標</h3>
+      <h3>目標管理</h3>
       <button class="btn-close-modal" onclick="closeGoalModal()">&#x2715;</button>
     </div>
-    <textarea class="lined-textarea" id="goalInput" placeholder="あなたの目標を入力してください..." style="min-height:160px;"></textarea>
-    <div class="form-actions" style="margin-top:10px;">
-      <button class="btn btn-secondary" onclick="clearGoal()">クリア</button>
+    <div class="goal-modal-section">
+      <div class="goal-modal-section-title">🎯 全体目標</div>
+      <textarea class="goal-modal-textarea" id="goalInput" placeholder="全体的な目標を入力してください..."></textarea>
+    </div>
+    <div class="goal-modal-section">
+      <div class="goal-modal-section-title">📅 今月の目標 <span id="goalMonthLabel"></span></div>
+      <textarea class="goal-modal-textarea" id="goalMonthInput" placeholder="今月の目標を入力してください..."></textarea>
+    </div>
+    <div class="goal-modal-section">
+      <div class="goal-modal-section-title">📆 今週の目標 <span id="goalWeekLabel"></span></div>
+      <textarea class="goal-modal-textarea" id="goalWeekInput" placeholder="今週の目標を入力してください..."></textarea>
+    </div>
+    <div class="form-actions" style="margin-top:4px;">
       <button class="btn btn-secondary" onclick="closeGoalModal()">キャンセル</button>
       <button class="btn btn-primary" onclick="saveGoal()" style="background:#e67e22;">保存</button>
     </div>
@@ -576,7 +621,7 @@
     <div class="memo-buttons-section">
       <button class="btn-memo idea"     onclick="openMemoModal('idea')">アイデアメモ</button>
       <button class="btn-memo maxim"    onclick="openMemoModal('maxim')">格言メモ</button>
-      <button class="btn-memo goal"     onclick="openGoalModal()">目標</button>
+      <button class="btn-memo goal"     onclick="openGoalModal()">目標管理</button>
       <button class="btn-memo learning" onclick="openLearningModal()">学びの一覧</button>
     </div>
     <div class="left-extra" id="leftExtra"></div>
@@ -904,7 +949,13 @@
       ?'<div class="left-empty">今週のアウトプットはありません</div>'
       :`<div class="left-stat">記録${active.length}日 / 合計${total}件</div>`
         +active.map(d=>{const[,m2,d2]=d.split('-');return`<div class="left-summary-date">${parseInt(m2)}月${parseInt(d2)}日</div>`+(data[d]||[]).map((o,i)=>leftSummaryItem(o,i)).join('');}).join('');
-    sec.innerHTML=`<div class="left-section-title">週のまとめ <span style="font-size:10px;color:#999;font-weight:400;">${parseInt(mm)}/${parseInt(md)}〜${parseInt(sm)}/${parseInt(sd)}</span></div>${body}`;
+    const wKey = getWeekKey(selectedDate);
+    const wGoal = memoData.weeklyGoals[wKey] || '';
+    const wGoalHtml = `<div class="goal-section" onclick="openGoalModal()">
+      <div class="goal-section-label">📆 今週の目標</div>
+      ${wGoal ? `<div class="goal-section-text">${escHtml(wGoal)}</div>` : '<div class="goal-section-empty">未設定（クリックして入力）</div>'}
+    </div>`;
+    sec.innerHTML=`<div class="left-section-title">週のまとめ <span style="font-size:10px;color:#999;font-weight:400;">${parseInt(mm)}/${parseInt(md)}〜${parseInt(sm)}/${parseInt(sd)}</span></div>${wGoalHtml}${body}`;
     return sec;
   }
 
@@ -918,7 +969,13 @@
       ?'<div class="left-empty">今月のアウトプットはありません</div>'
       :`<div class="left-stat">記録${active.length}日 / 合計${total}件</div>`
         +active.map(d=>{const[,m2,d2]=d.split('-');return`<div class="left-summary-date">${parseInt(m2)}月${parseInt(d2)}日</div>`+(data[d]||[]).map((o,i)=>leftSummaryItem(o,i)).join('');}).join('');
-    sec.innerHTML=`<div class="left-section-title">月のまとめ <span style="font-size:10px;color:#999;font-weight:400;">${year}年${month+1}月</span></div>${body}`;
+    const mKey = getMonthKey(selectedDate);
+    const mGoal = memoData.monthlyGoals[mKey] || '';
+    const mGoalHtml = `<div class="goal-section" onclick="openGoalModal()">
+      <div class="goal-section-label">📅 今月の目標</div>
+      ${mGoal ? `<div class="goal-section-text">${escHtml(mGoal)}</div>` : '<div class="goal-section-empty">未設定（クリックして入力）</div>'}
+    </div>`;
+    sec.innerHTML=`<div class="left-section-title">月のまとめ <span style="font-size:10px;color:#999;font-weight:400;">${year}年${month+1}月</span></div>${mGoalHtml}${body}`;
     return sec;
   }
 
@@ -1162,48 +1219,57 @@
   }
 
   // ===== MEMO DATA =====
-  let memoData = { idea: [], maxim: [], goal: '' };
+  let memoData = { idea: [], maxim: [], goal: '', weeklyGoals: {}, monthlyGoals: {} };
+
+  function getWeekKey(dateStr) {
+    const d = new Date(dateStr), dow = (d.getDay()+6)%7;
+    const mon = new Date(d); mon.setDate(d.getDate()-dow);
+    return formatDate(mon); // 月曜日の日付をキーに
+  }
+  function getMonthKey(dateStr) {
+    const [y,m] = dateStr.split('-'); return `${y}-${m}`;
+  }
   let currentMemoType = null;
 
   function loadMemosFromLocal() {
     try {
-      memoData.idea  = JSON.parse(localStorage.getItem('ideaMemos')  || '[]');
-      memoData.maxim = JSON.parse(localStorage.getItem('maximMemos') || '[]');
-      memoData.goal  = localStorage.getItem('goalMemo') || '';
-    } catch { memoData = { idea: [], maxim: [], goal: '' }; }
+      memoData.idea         = JSON.parse(localStorage.getItem('ideaMemos')     || '[]');
+      memoData.maxim        = JSON.parse(localStorage.getItem('maximMemos')    || '[]');
+      memoData.goal         = localStorage.getItem('goalMemo') || '';
+      memoData.weeklyGoals  = JSON.parse(localStorage.getItem('weeklyGoals')  || '{}');
+      memoData.monthlyGoals = JSON.parse(localStorage.getItem('monthlyGoals') || '{}');
+    } catch { memoData = { idea: [], maxim: [], goal: '', weeklyGoals: {}, monthlyGoals: {} }; }
   }
 
   async function loadMemosFromFirestore() {
     try {
       const ref = db.collection('users').doc(currentUser.uid).collection('memos');
-      const [ideaDoc, maximDoc, goalDoc] = await Promise.all([
-        ref.doc('idea').get(), ref.doc('maxim').get(), ref.doc('goal').get()
+      const [ideaDoc, maximDoc, goalDoc, weekDoc, monthDoc] = await Promise.all([
+        ref.doc('idea').get(), ref.doc('maxim').get(), ref.doc('goal').get(),
+        ref.doc('weeklyGoals').get(), ref.doc('monthlyGoals').get()
       ]);
-      memoData.idea  = ideaDoc.exists  ? ideaDoc.data().entries  || [] : [];
-      memoData.maxim = maximDoc.exists ? maximDoc.data().entries || [] : [];
-      memoData.goal  = goalDoc.exists  ? goalDoc.data().text     || '' : '';
+      memoData.idea         = ideaDoc.exists  ? ideaDoc.data().entries  || [] : [];
+      memoData.maxim        = maximDoc.exists ? maximDoc.data().entries || [] : [];
+      memoData.goal         = goalDoc.exists  ? goalDoc.data().text     || '' : '';
+      memoData.weeklyGoals  = weekDoc.exists  ? weekDoc.data().goals   || {} : {};
+      memoData.monthlyGoals = monthDoc.exists ? monthDoc.data().goals  || {} : {};
     } catch(e) { console.error('Memo load error:', e); }
   }
 
   async function saveMemos(type) {
-    if (type === 'goal') {
-      if (isFirebaseMode && db && currentUser) {
-        try {
-          await db.collection('users').doc(currentUser.uid)
-                  .collection('memos').doc('goal').set({ text: memoData.goal });
-        } catch(e) { alert('保存エラー: ' + e.message); }
-      } else {
-        localStorage.setItem('goalMemo', memoData.goal);
-      }
-      return;
-    }
     if (isFirebaseMode && db && currentUser) {
       try {
-        await db.collection('users').doc(currentUser.uid)
-                .collection('memos').doc(type).set({ entries: memoData[type] });
+        const ref = db.collection('users').doc(currentUser.uid).collection('memos');
+        if (type === 'goal')         await ref.doc('goal').set({ text: memoData.goal });
+        else if (type === 'weeklyGoals')  await ref.doc('weeklyGoals').set({ goals: memoData.weeklyGoals });
+        else if (type === 'monthlyGoals') await ref.doc('monthlyGoals').set({ goals: memoData.monthlyGoals });
+        else await ref.doc(type).set({ entries: memoData[type] });
       } catch(e) { alert('保存エラー: ' + e.message); }
     } else {
-      localStorage.setItem(type === 'idea' ? 'ideaMemos' : 'maximMemos', JSON.stringify(memoData[type]));
+      if (type === 'goal')         localStorage.setItem('goalMemo', memoData.goal);
+      else if (type === 'weeklyGoals')  localStorage.setItem('weeklyGoals', JSON.stringify(memoData.weeklyGoals));
+      else if (type === 'monthlyGoals') localStorage.setItem('monthlyGoals', JSON.stringify(memoData.monthlyGoals));
+      else localStorage.setItem(type === 'idea' ? 'ideaMemos' : 'maximMemos', JSON.stringify(memoData[type]));
     }
   }
 
@@ -1227,7 +1293,18 @@
   }
 
   function openGoalModal() {
-    document.getElementById('goalInput').value = memoData.goal || '';
+    const base = selectedDate || todayStr();
+    const wKey = getWeekKey(base), mKey = getMonthKey(base);
+    const sel = new Date(base), dow = (sel.getDay()+6)%7;
+    const mon = new Date(sel); mon.setDate(sel.getDate()-dow);
+    const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+    const [,mm,md] = formatDate(mon).split('-'), [,sm,sd] = formatDate(sun).split('-');
+    const [my, mmm] = mKey.split('-');
+    document.getElementById('goalWeekLabel').textContent  = `${parseInt(mm)}/${parseInt(md)}〜${parseInt(sm)}/${parseInt(sd)}`;
+    document.getElementById('goalMonthLabel').textContent = `${my}年${parseInt(mmm)}月`;
+    document.getElementById('goalInput').value      = memoData.goal || '';
+    document.getElementById('goalWeekInput').value  = memoData.weeklyGoals[wKey]  || '';
+    document.getElementById('goalMonthInput').value = memoData.monthlyGoals[mKey] || '';
     document.getElementById('goalModal').style.display = 'flex';
   }
 
@@ -1236,17 +1313,16 @@
   }
 
   async function saveGoal() {
+    const base = selectedDate || todayStr();
+    const wKey = getWeekKey(base), mKey = getMonthKey(base);
     memoData.goal = document.getElementById('goalInput').value.trim();
-    await saveMemos('goal');
+    const wVal = document.getElementById('goalWeekInput').value.trim();
+    const mVal = document.getElementById('goalMonthInput').value.trim();
+    if (wVal) memoData.weeklyGoals[wKey]  = wVal; else delete memoData.weeklyGoals[wKey];
+    if (mVal) memoData.monthlyGoals[mKey] = mVal; else delete memoData.monthlyGoals[mKey];
+    await Promise.all([saveMemos('goal'), saveMemos('weeklyGoals'), saveMemos('monthlyGoals')]);
     updateGoalBanner();
-    closeGoalModal();
-  }
-
-  async function clearGoal() {
-    if (!confirm('目標をクリアしますか？')) return;
-    memoData.goal = '';
-    await saveMemos('goal');
-    updateGoalBanner();
+    renderLeftPanel();
     closeGoalModal();
   }
 
