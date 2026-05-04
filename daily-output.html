@@ -447,6 +447,33 @@
     }
     .no-date-message p { font-size: 14px; }
 
+    /* ===== RELOAD WARNING MODAL ===== */
+    .reload-modal-card {
+      background: white; border-radius: 14px;
+      padding: 28px 28px 22px; width: 92%; max-width: 400px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center;
+    }
+    .reload-modal-icon { font-size: 36px; margin-bottom: 12px; }
+    .reload-modal-title { font-size: 16px; font-weight: 700; color: #2c3e50; margin-bottom: 8px; }
+    .reload-modal-desc  { font-size: 13px; color: #888; line-height: 1.6; margin-bottom: 20px; }
+    .reload-modal-actions { display: flex; gap: 10px; justify-content: center; }
+
+    /* ===== UNRECORDED FIELDS ===== */
+    .unrecorded-section {
+      margin-top: 12px; padding-top: 10px;
+      border-top: 1px dashed #e0e0e0;
+    }
+    .unrecorded-title {
+      font-size: 11px; font-weight: 700; color: #bbb;
+      margin-bottom: 7px; display: flex; align-items: center; gap: 4px;
+    }
+    .unrecorded-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+    .unrecorded-tag {
+      font-size: 11px; color: #aaa; background: #f5f5f5;
+      border: 1px solid #e0e0e0; border-radius: 10px;
+      padding: 2px 9px;
+    }
+
     /* ===== GOAL SECTION IN SUMMARY ===== */
     .goal-section {
       background: #fff8f0; border: 1px solid #f5c98a;
@@ -482,6 +509,7 @@
       box-shadow: 0 0 0 3px rgba(230,126,34,0.12);
     }
 
+
     /* ===== URL LINKS ===== */
     .url-link { color: #2980b9; text-decoration: underline; cursor: pointer; word-break: break-all; }
     .url-link:hover { color: #1a5f8a; }
@@ -512,6 +540,19 @@
   </style>
 </head>
 <body>
+
+<!-- Reload Warning Modal -->
+<div class="memo-modal" id="reloadWarningModal" style="display:none;">
+  <div class="reload-modal-card">
+    <div class="reload-modal-icon">⚠️</div>
+    <div class="reload-modal-title">入力中の内容があります</div>
+    <div class="reload-modal-desc">リロードすると入力中の内容が消えます。<br>本当にリロードしますか？</div>
+    <div class="reload-modal-actions">
+      <button class="btn btn-secondary" onclick="closeReloadWarning()">キャンセル</button>
+      <button class="btn btn-danger"    onclick="confirmReload()">リロード</button>
+    </div>
+  </div>
+</div>
 
 <!-- Learning Modal -->
 <div class="memo-modal" id="learningModal" style="display:none;">
@@ -596,7 +637,7 @@
       <button class="btn-logout" onclick="signOutUser()">ログアウト</button>
     </div>
     <span class="storage-badge local" id="storageBadge">Local</span>
-    <span class="version">v2.4.0</span>
+    <span class="version">v2.6.0</span>
   </div>
 </header>
 
@@ -647,7 +688,8 @@
   };
   // ============================================================
 
-  const VERSION    = 'v2.4.0';
+  const VERSION    = 'v2.6.0';
+
 
   const FIELD_DEFS = [
     { key: 'experience',        label: '① 経験' },
@@ -1167,6 +1209,15 @@
     const sec=document.createElement('div');
     sec.className='panel-section';
     const outputs=data[selectedDate]||[];
+    const recordedKeys = new Set(outputs.flatMap(o => FIELD_DEFS.filter(f=>o[f.key]).map(f=>f.key)));
+    const unrecorded = FIELD_DEFS.filter(f => !recordedKeys.has(f.key));
+    const unrecordedHtml = unrecorded.length === 0 ? '' : `
+      <div class="unrecorded-section">
+        <div class="unrecorded-title">📋 未記録の項目</div>
+        <div class="unrecorded-tags">
+          ${unrecorded.map(f=>`<span class="unrecorded-tag">${escHtml(f.label)}</span>`).join('')}
+        </div>
+      </div>`;
     sec.innerHTML=`
       <div class="section-title">その日のまとめ
         <span style="font-weight:400;color:#999;font-size:12px;">${formatDateJP(selectedDate)}</span>
@@ -1175,6 +1226,7 @@
         ${outputs.length===0
           ?'<div class="empty-message">この日のアウトプットはありません</div>'
           :`<div class="summary-stat">アウトプット数：${outputs.length}件</div>${summaryItems(outputs)}`}
+        ${unrecordedHtml}
       </div>`;
     return sec;
   }
@@ -1217,6 +1269,7 @@
       <div class="summary-content">${body}</div>`;
     return sec;
   }
+
 
   // ===== MEMO DATA =====
   let memoData = { idea: [], maxim: [], goal: '', weeklyGoals: {}, monthlyGoals: {} };
@@ -1455,6 +1508,41 @@
       if(document.activeElement && document.activeElement.tagName==='TEXTAREA') return;
       if(selectedDate){renderLeftPanel();renderRightPanel();}
     },150);
+  });
+
+  // ===== RELOAD WARNING =====
+  function hasUnsavedInput() {
+    return FIELD_DEFS.some(f => {
+      const el = document.getElementById(`nf_${f.key}`);
+      return el && el.value.trim() !== '';
+    });
+  }
+  function showReloadWarning() {
+    document.getElementById('reloadWarningModal').style.display = 'flex';
+  }
+  function closeReloadWarning() {
+    document.getElementById('reloadWarningModal').style.display = 'none';
+  }
+  function confirmReload() {
+    window.location.reload();
+  }
+
+  // F5 / Ctrl+R / Cmd+R をインターセプト
+  document.addEventListener('keydown', e => {
+    if (e.key === 'F5' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'r')) {
+      if (hasUnsavedInput()) {
+        e.preventDefault();
+        showReloadWarning();
+      }
+    }
+  });
+
+  // タブを閉じる・URLバーで遷移するケース（ブラウザ標準ダイアログ）
+  window.addEventListener('beforeunload', e => {
+    if (hasUnsavedInput()) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
   });
 
   // ===== START =====
