@@ -459,9 +459,9 @@
     .reload-modal-actions { display: flex; gap: 10px; justify-content: center; }
 
     /* ===== UNRECORDED FIELDS ===== */
-    .unrecorded-section {
-      margin-top: 12px; padding-top: 10px;
-      border-top: 1px dashed #e0e0e0;
+    #unrecordedSection {
+      padding: 10px 16px; border-top: 1px solid #f0f0f0;
+      border-bottom: 1px solid #f0f0f0;
     }
     .unrecorded-title {
       font-size: 11px; font-weight: 700; color: #bbb;
@@ -665,6 +665,7 @@
       <button class="btn-memo goal"     onclick="openGoalModal()">目標管理</button>
       <button class="btn-memo learning" onclick="openLearningModal()">学びの一覧</button>
     </div>
+    <div id="unrecordedSection" style="display:none;"></div>
     <div class="left-extra" id="leftExtra"></div>
   </div>
   <div class="right-panel" id="rightPanel">
@@ -919,7 +920,24 @@
   }
 
   // ===== LEFT PANEL EXTRA =====
+  function renderUnrecordedSection() {
+    const sec = document.getElementById('unrecordedSection');
+    if (!sec || !selectedDate) { if(sec) sec.style.display='none'; return; }
+    const data = loadData();
+    const outputs = data[selectedDate] || [];
+    const recordedKeys = new Set(outputs.flatMap(o => FIELD_DEFS.filter(f=>o[f.key]).map(f=>f.key)));
+    const unrecorded = FIELD_DEFS.filter(f => !recordedKeys.has(f.key));
+    if (unrecorded.length === 0) { sec.style.display='none'; return; }
+    sec.style.display = 'block';
+    sec.innerHTML = `
+      <div class="unrecorded-title">📋 未記録の項目</div>
+      <div class="unrecorded-tags">
+        ${unrecorded.map(f=>`<span class="unrecorded-tag">${escHtml(f.label)}</span>`).join('')}
+      </div>`;
+  }
+
   function renderLeftPanel() {
+    renderUnrecordedSection();
     const extra = document.getElementById('leftExtra');
     extra.innerHTML = '';
     if (!selectedDate || isMobile()) return;
@@ -1209,15 +1227,6 @@
     const sec=document.createElement('div');
     sec.className='panel-section';
     const outputs=data[selectedDate]||[];
-    const recordedKeys = new Set(outputs.flatMap(o => FIELD_DEFS.filter(f=>o[f.key]).map(f=>f.key)));
-    const unrecorded = FIELD_DEFS.filter(f => !recordedKeys.has(f.key));
-    const unrecordedHtml = unrecorded.length === 0 ? '' : `
-      <div class="unrecorded-section">
-        <div class="unrecorded-title">📋 未記録の項目</div>
-        <div class="unrecorded-tags">
-          ${unrecorded.map(f=>`<span class="unrecorded-tag">${escHtml(f.label)}</span>`).join('')}
-        </div>
-      </div>`;
     sec.innerHTML=`
       <div class="section-title">その日のまとめ
         <span style="font-weight:400;color:#999;font-size:12px;">${formatDateJP(selectedDate)}</span>
@@ -1226,7 +1235,6 @@
         ${outputs.length===0
           ?'<div class="empty-message">この日のアウトプットはありません</div>'
           :`<div class="summary-stat">アウトプット数：${outputs.length}件</div>${summaryItems(outputs)}`}
-        ${unrecordedHtml}
       </div>`;
     return sec;
   }
