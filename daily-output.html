@@ -231,8 +231,33 @@
     .btn-memo.maxim:hover { background: #f9f0ff; }
     .btn-memo.goal  { border-color: #e67e22; color: #e67e22; }
     .btn-memo.goal:hover  { background: #fff8f0; }
-    .btn-memo.learning { border-color: #2980b9; color: #2980b9; }
-    .btn-memo.learning:hover { background: #f0f8ff; }
+    .btn-memo.learning  { border-color: #2980b9; color: #2980b9; }
+    .btn-memo.learning:hover  { background: #f0f8ff; }
+    .btn-memo.bookmark  { border-color: #f39c12; color: #f39c12; }
+    .btn-memo.bookmark:hover  { background: #fffbf0; }
+    .btn-memo.likedislike { border-color: #e91e8c; color: #e91e8c; }
+    .btn-memo.likedislike:hover { background: #fff0f8; }
+
+    /* ===== BOOKMARK BUTTON IN ENTRY ===== */
+    .btn-bookmark {
+      background: none; border: 1px solid #ddd; border-radius: 6px;
+      cursor: pointer; font-size: 14px; padding: 4px 8px;
+      transition: background 0.15s, border-color 0.15s;
+      min-height: 30px; line-height: 1;
+    }
+    .btn-bookmark:hover { background: #fffbf0; border-color: #f39c12; }
+    .btn-bookmark.bookmarked { background: #fffbf0; border-color: #f39c12; }
+
+    /* ===== LIKE/DISLIKE TABS ===== */
+    .ld-tabs { display: flex; gap: 0; margin-bottom: 14px; border-bottom: 2px solid #f0f0f0; }
+    .ld-tab {
+      padding: 8px 20px; font-size: 13px; font-weight: 700;
+      cursor: pointer; border: none; background: none;
+      color: #aaa; border-bottom: 3px solid transparent; margin-bottom: -2px;
+      transition: color 0.15s;
+    }
+    .ld-tab.active-like    { color: #e74c3c; border-bottom-color: #e74c3c; }
+    .ld-tab.active-dislike { color: #3498db; border-bottom-color: #3498db; }
 
     /* ===== GOAL BANNER ===== */
     .goal-banner {
@@ -556,6 +581,37 @@
   </div>
 </div>
 
+<!-- Bookmark Modal -->
+<div class="memo-modal" id="bookmarkModal" style="display:none;">
+  <div class="memo-modal-card">
+    <div class="memo-modal-header">
+      <h3>⭐ ブックマーク</h3>
+      <button class="btn-close-modal" onclick="closeBookmarkModal()">&#x2715;</button>
+    </div>
+    <div id="bookmarkList"></div>
+  </div>
+</div>
+
+<!-- Like/Dislike Modal -->
+<div class="memo-modal" id="likedislikeModal" style="display:none;">
+  <div class="memo-modal-card">
+    <div class="memo-modal-header">
+      <h3>好き / 嫌い メモ</h3>
+      <button class="btn-close-modal" onclick="closeLikeDislikeModal()">&#x2715;</button>
+    </div>
+    <div class="ld-tabs">
+      <button class="ld-tab" id="tab-like"    onclick="switchLDTab('like')">❤️ 好きなこと</button>
+      <button class="ld-tab" id="tab-dislike" onclick="switchLDTab('dislike')">💙 嫌いなこと</button>
+    </div>
+    <textarea class="lined-textarea" id="ldInput" placeholder="" style="min-height:120px;"></textarea>
+    <div class="form-actions" style="margin-top:10px;">
+      <button class="btn btn-secondary" onclick="closeLikeDislikeModal()">キャンセル</button>
+      <button class="btn btn-primary" id="ldSaveBtn" onclick="saveLDEntry()">保存</button>
+    </div>
+    <div id="ldEntriesList"></div>
+  </div>
+</div>
+
 <!-- Learning Modal -->
 <div class="memo-modal" id="learningModal" style="display:none;">
   <div class="memo-modal-card">
@@ -639,7 +695,7 @@
       <button class="btn-logout" onclick="signOutUser()">ログアウト</button>
     </div>
     <span class="storage-badge local" id="storageBadge">Local</span>
-    <span class="version">v2.6.0</span>
+    <span class="version">v2.7.0</span>
   </div>
 </header>
 
@@ -662,10 +718,12 @@
       <div class="calendar-grid" id="calendarGrid"></div>
     </div>
     <div class="memo-buttons-section">
-      <button class="btn-memo idea"     onclick="openMemoModal('idea')">アイデアメモ</button>
-      <button class="btn-memo maxim"    onclick="openMemoModal('maxim')">格言メモ</button>
-      <button class="btn-memo goal"     onclick="openGoalModal()">目標管理</button>
-      <button class="btn-memo learning" onclick="openLearningModal()">学びの一覧</button>
+      <button class="btn-memo idea"        onclick="openMemoModal('idea')">アイデアメモ</button>
+      <button class="btn-memo maxim"       onclick="openMemoModal('maxim')">格言メモ</button>
+      <button class="btn-memo goal"        onclick="openGoalModal()">目標管理</button>
+      <button class="btn-memo learning"    onclick="openLearningModal()">学びの一覧</button>
+      <button class="btn-memo bookmark"    onclick="openBookmarkModal()">⭐ ブックマーク</button>
+      <button class="btn-memo likedislike" onclick="openLikeDislikeModal()">好き/嫌い</button>
     </div>
     <div id="unrecordedSection" style="display:none;"></div>
     <div class="left-extra" id="leftExtra"></div>
@@ -691,7 +749,7 @@
   };
   // ============================================================
 
-  const VERSION    = 'v2.6.0';
+  const VERSION    = 'v2.7.0';
 
 
   const FIELD_DEFS = [
@@ -1171,6 +1229,7 @@
       <div class="output-entry-header">
         <span class="entry-num">アウトプット #${num}</span>
         <div class="entry-actions" id="actions_view_${output.id}">
+          <button class="btn-bookmark${isBookmarked(output.id)?' bookmarked':''}" onclick="toggleBookmark('${output.id}')" title="ブックマーク">${isBookmarked(output.id)?'⭐':'☆'}</button>
           <button class="btn btn-warning btn-sm" onclick="startEdit('${output.id}')">編集</button>
           <button class="btn btn-danger btn-sm" onclick="deleteOutput('${output.id}')">削除</button>
         </div>
@@ -1282,7 +1341,7 @@
 
 
   // ===== MEMO DATA =====
-  let memoData = { idea: [], maxim: [], goal: '', weeklyGoals: {}, monthlyGoals: {} };
+  let memoData = { idea: [], maxim: [], goal: '', weeklyGoals: {}, monthlyGoals: {}, bookmarks: [], like: [], dislike: [] };
 
   function getWeekKey(dateStr) {
     const d = new Date(dateStr), dow = (d.getDay()+6)%7;
@@ -1301,21 +1360,28 @@
       memoData.goal         = localStorage.getItem('goalMemo') || '';
       memoData.weeklyGoals  = JSON.parse(localStorage.getItem('weeklyGoals')  || '{}');
       memoData.monthlyGoals = JSON.parse(localStorage.getItem('monthlyGoals') || '{}');
-    } catch { memoData = { idea: [], maxim: [], goal: '', weeklyGoals: {}, monthlyGoals: {} }; }
+      memoData.bookmarks    = JSON.parse(localStorage.getItem('bookmarks')    || '[]');
+      memoData.like         = JSON.parse(localStorage.getItem('likeMemos')    || '[]');
+      memoData.dislike      = JSON.parse(localStorage.getItem('dislikeMemos') || '[]');
+    } catch { memoData = { idea: [], maxim: [], goal: '', weeklyGoals: {}, monthlyGoals: {}, bookmarks: [], like: [], dislike: [] }; }
   }
 
   async function loadMemosFromFirestore() {
     try {
       const ref = db.collection('users').doc(currentUser.uid).collection('memos');
-      const [ideaDoc, maximDoc, goalDoc, weekDoc, monthDoc] = await Promise.all([
+      const [ideaDoc, maximDoc, goalDoc, weekDoc, monthDoc, bmDoc, likeDoc, dislikeDoc] = await Promise.all([
         ref.doc('idea').get(), ref.doc('maxim').get(), ref.doc('goal').get(),
-        ref.doc('weeklyGoals').get(), ref.doc('monthlyGoals').get()
+        ref.doc('weeklyGoals').get(), ref.doc('monthlyGoals').get(),
+        ref.doc('bookmarks').get(), ref.doc('like').get(), ref.doc('dislike').get()
       ]);
-      memoData.idea         = ideaDoc.exists  ? ideaDoc.data().entries  || [] : [];
-      memoData.maxim        = maximDoc.exists ? maximDoc.data().entries || [] : [];
-      memoData.goal         = goalDoc.exists  ? goalDoc.data().text     || '' : '';
-      memoData.weeklyGoals  = weekDoc.exists  ? weekDoc.data().goals   || {} : {};
-      memoData.monthlyGoals = monthDoc.exists ? monthDoc.data().goals  || {} : {};
+      memoData.idea         = ideaDoc.exists    ? ideaDoc.data().entries    || [] : [];
+      memoData.maxim        = maximDoc.exists   ? maximDoc.data().entries   || [] : [];
+      memoData.goal         = goalDoc.exists    ? goalDoc.data().text       || '' : '';
+      memoData.weeklyGoals  = weekDoc.exists    ? weekDoc.data().goals      || {} : {};
+      memoData.monthlyGoals = monthDoc.exists   ? monthDoc.data().goals     || {} : {};
+      memoData.bookmarks    = bmDoc.exists      ? bmDoc.data().entries      || [] : [];
+      memoData.like         = likeDoc.exists    ? likeDoc.data().entries    || [] : [];
+      memoData.dislike      = dislikeDoc.exists ? dislikeDoc.data().entries || [] : [];
     } catch(e) { console.error('Memo load error:', e); }
   }
 
@@ -1332,6 +1398,9 @@
       if (type === 'goal')         localStorage.setItem('goalMemo', memoData.goal);
       else if (type === 'weeklyGoals')  localStorage.setItem('weeklyGoals', JSON.stringify(memoData.weeklyGoals));
       else if (type === 'monthlyGoals') localStorage.setItem('monthlyGoals', JSON.stringify(memoData.monthlyGoals));
+      else if (type === 'bookmarks') localStorage.setItem('bookmarks', JSON.stringify(memoData.bookmarks));
+      else if (type === 'like')      localStorage.setItem('likeMemos',    JSON.stringify(memoData.like));
+      else if (type === 'dislike')   localStorage.setItem('dislikeMemos', JSON.stringify(memoData.dislike));
       else localStorage.setItem(type === 'idea' ? 'ideaMemos' : 'maximMemos', JSON.stringify(memoData[type]));
     }
   }
@@ -1444,12 +1513,113 @@
     });
   }
 
+  // ===== BOOKMARK =====
+  function isBookmarked(entryId) {
+    return memoData.bookmarks.some(b => b.entryId === entryId);
+  }
+  async function toggleBookmark(entryId) {
+    const idx = memoData.bookmarks.findIndex(b => b.entryId === entryId);
+    if (idx >= 0) {
+      memoData.bookmarks.splice(idx, 1);
+    } else {
+      const data = loadData();
+      const entry = Object.values(data).flat().find(e => e.id === entryId);
+      const dateStr = Object.keys(data).find(d => (data[d]||[]).some(e => e.id === entryId)) || selectedDate;
+      memoData.bookmarks.unshift({ id: generateId(), entryId, dateStr, entry: {...entry}, createdAt: new Date().toISOString() });
+    }
+    await saveMemos('bookmarks');
+    renderRightPanel();
+  }
+  function openBookmarkModal() {
+    renderBookmarkList();
+    document.getElementById('bookmarkModal').style.display = 'flex';
+  }
+  function closeBookmarkModal() {
+    document.getElementById('bookmarkModal').style.display = 'none';
+  }
+  function renderBookmarkList() {
+    const list = document.getElementById('bookmarkList');
+    if (!memoData.bookmarks.length) {
+      list.innerHTML = '<div class="empty-message">ブックマークはありません</div>'; return;
+    }
+    list.innerHTML = '';
+    memoData.bookmarks.forEach(b => {
+      const div = document.createElement('div');
+      div.className = 'memo-entry';
+      const fields = FIELD_DEFS.filter(f => b.entry && b.entry[f.key])
+        .map(f => `<div><span style="color:#aaa;font-size:11px;font-weight:700;">${escHtml(f.label)}：</span>${linkifyText(b.entry[f.key])}</div>`)
+        .join('');
+      div.innerHTML = `
+        <div class="memo-entry-date">⭐ ${formatDateJP(b.dateStr)}</div>
+        <div class="memo-entry-text">${fields}</div>
+        <button class="btn-delete-memo" onclick="deleteBookmark('${b.id}')">&#x2715;</button>`;
+      list.appendChild(div);
+    });
+  }
+  async function deleteBookmark(id) {
+    memoData.bookmarks = memoData.bookmarks.filter(b => b.id !== id);
+    await saveMemos('bookmarks');
+    renderBookmarkList();
+    renderRightPanel();
+  }
+
+  // ===== LIKE / DISLIKE =====
+  let currentLDTab = 'like';
+  function openLikeDislikeModal() {
+    switchLDTab('like');
+    document.getElementById('likedislikeModal').style.display = 'flex';
+  }
+  function closeLikeDislikeModal() {
+    document.getElementById('likedislikeModal').style.display = 'none';
+  }
+  function switchLDTab(tab) {
+    currentLDTab = tab;
+    document.getElementById('tab-like').className    = 'ld-tab' + (tab==='like'    ? ' active-like'    : '');
+    document.getElementById('tab-dislike').className = 'ld-tab' + (tab==='dislike' ? ' active-dislike'  : '');
+    document.getElementById('ldInput').placeholder   = tab === 'like' ? '好きなことを書き留めてください...' : '嫌いなことを書き留めてください...';
+    document.getElementById('ldSaveBtn').style.background = tab === 'like' ? '#e74c3c' : '#3498db';
+    document.getElementById('ldInput').value = '';
+    renderLDEntries();
+  }
+  async function saveLDEntry() {
+    const text = document.getElementById('ldInput').value.trim();
+    if (!text) { alert('内容を入力してください。'); return; }
+    memoData[currentLDTab].unshift({ id: generateId(), text, createdAt: new Date().toISOString() });
+    await saveMemos(currentLDTab);
+    document.getElementById('ldInput').value = '';
+    renderLDEntries();
+  }
+  async function deleteLDEntry(tab, id) {
+    if (!confirm('削除しますか？')) return;
+    memoData[tab] = memoData[tab].filter(e => e.id !== id);
+    await saveMemos(tab);
+    renderLDEntries();
+  }
+  function renderLDEntries() {
+    const list = document.getElementById('ldEntriesList');
+    const entries = memoData[currentLDTab] || [];
+    if (!entries.length) { list.innerHTML = '<div class="empty-message">まだ登録がありません</div>'; return; }
+    list.innerHTML = `<div class="memo-entries-header">保存済み（${entries.length}件）</div>`;
+    entries.forEach(e => {
+      const div = document.createElement('div');
+      div.className = 'memo-entry';
+      div.innerHTML = `
+        <div class="memo-entry-date">${new Date(e.createdAt).toLocaleDateString('ja-JP')}</div>
+        <div class="memo-entry-text">${linkifyText(e.text)}</div>
+        <button class="btn-delete-memo" onclick="deleteLDEntry('${currentLDTab}','${e.id}')">&#x2715;</button>`;
+      list.appendChild(div);
+    });
+  }
+
   // ===== 学びの一覧 =====
-  const LEARNING_KEYS = ['conceptualization', 'practice', 'whywhy'];
+  const LEARNING_KEYS = ['conceptualization', 'experience', 'reflection', 'practice', 'concrete_abstract', 'whywhy'];
   const LEARNING_LABELS = {
+    experience:        '① 経験',
+    reflection:        '② 振り返り',
     conceptualization: '③ 概念化',
     practice:          '④ 実践',
-    whywhy:            '⑤ なぜなぜ分析',
+    concrete_abstract: '⑤ 具体→抽象→具体',
+    whywhy:            '⑥ なぜなぜ分析',
   };
 
   function openLearningModal() {
@@ -1501,6 +1671,12 @@
   });
   document.getElementById('learningModal').addEventListener('click', e => {
     if (e.target === document.getElementById('learningModal')) closeLearningModal();
+  });
+  document.getElementById('bookmarkModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('bookmarkModal')) closeBookmarkModal();
+  });
+  document.getElementById('likedislikeModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('likedislikeModal')) closeLikeDislikeModal();
   });
 
   // ===== NAVIGATION =====
