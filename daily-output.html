@@ -360,6 +360,13 @@
       background: #f0f8ff;
     }
     .learning-entry.conceptualization .learning-entry-label { color: #2980b9; }
+    .btn-bookmark-learning {
+      position: absolute; top: 8px; right: 10px;
+      background: none; border: none; cursor: pointer;
+      font-size: 16px; padding: 0 2px; line-height: 1;
+      color: #f5a623; opacity: 0.6; transition: opacity 0.15s;
+    }
+    .btn-bookmark-learning:hover { opacity: 1; }
     .btn-delete-memo {
       position: absolute; top: 8px; right: 10px;
       background: none; border: none; cursor: pointer;
@@ -1229,7 +1236,6 @@
       <div class="output-entry-header">
         <span class="entry-num">アウトプット #${num}</span>
         <div class="entry-actions" id="actions_view_${output.id}">
-          <button class="btn-bookmark${isBookmarked(output.id)?' bookmarked':''}" onclick="toggleBookmark('${output.id}')" title="ブックマーク">${isBookmarked(output.id)?'⭐':'☆'}</button>
           <button class="btn btn-warning btn-sm" onclick="startEdit('${output.id}')">編集</button>
           <button class="btn btn-danger btn-sm" onclick="deleteOutput('${output.id}')">削除</button>
         </div>
@@ -1514,21 +1520,18 @@
   }
 
   // ===== BOOKMARK =====
-  function isBookmarked(entryId) {
-    return memoData.bookmarks.some(b => b.entryId === entryId);
+  function isBookmarked(entryId, fieldKey) {
+    return memoData.bookmarks.some(b => b.entryId === entryId && b.fieldKey === fieldKey);
   }
-  async function toggleBookmark(entryId) {
-    const idx = memoData.bookmarks.findIndex(b => b.entryId === entryId);
+  async function toggleBookmark(entryId, fieldKey, dateStr, label, text) {
+    const idx = memoData.bookmarks.findIndex(b => b.entryId === entryId && b.fieldKey === fieldKey);
     if (idx >= 0) {
       memoData.bookmarks.splice(idx, 1);
     } else {
-      const data = loadData();
-      const entry = Object.values(data).flat().find(e => e.id === entryId);
-      const dateStr = Object.keys(data).find(d => (data[d]||[]).some(e => e.id === entryId)) || selectedDate;
-      memoData.bookmarks.unshift({ id: generateId(), entryId, dateStr, entry: {...entry}, createdAt: new Date().toISOString() });
+      memoData.bookmarks.unshift({ id: generateId(), entryId, fieldKey, dateStr, label, text, createdAt: new Date().toISOString() });
     }
     await saveMemos('bookmarks');
-    renderRightPanel();
+    renderLearningList();
   }
   function openBookmarkModal() {
     renderBookmarkList();
@@ -1546,12 +1549,9 @@
     memoData.bookmarks.forEach(b => {
       const div = document.createElement('div');
       div.className = 'memo-entry';
-      const fields = FIELD_DEFS.filter(f => b.entry && b.entry[f.key])
-        .map(f => `<div><span style="color:#aaa;font-size:11px;font-weight:700;">${escHtml(f.label)}：</span>${linkifyText(b.entry[f.key])}</div>`)
-        .join('');
       div.innerHTML = `
-        <div class="memo-entry-date">⭐ ${formatDateJP(b.dateStr)}</div>
-        <div class="memo-entry-text">${fields}</div>
+        <div class="memo-entry-date">⭐ ${formatDateJP(b.dateStr)} ／ ${escHtml(b.label)}</div>
+        <div class="memo-entry-text">${linkifyText(b.text)}</div>
         <button class="btn-delete-memo" onclick="deleteBookmark('${b.id}')">&#x2715;</button>`;
       list.appendChild(div);
     });
@@ -1560,7 +1560,7 @@
     memoData.bookmarks = memoData.bookmarks.filter(b => b.id !== id);
     await saveMemos('bookmarks');
     renderBookmarkList();
-    renderRightPanel();
+    renderLearningList();
   }
 
   // ===== LIKE / DISLIKE =====
@@ -1652,9 +1652,26 @@
           if (!o[key]) return;
           const item = document.createElement('div');
           item.className = `learning-entry${key === 'conceptualization' ? ' conceptualization' : ''}`;
-          item.innerHTML = `
-            <div class="learning-entry-label">${LEARNING_LABELS[key]}</div>
-            <div class="learning-entry-text">${linkifyText(o[key])}</div>`;
+          item.style.position = 'relative';
+          const labelDiv = document.createElement('div');
+          labelDiv.className = 'learning-entry-label';
+          labelDiv.textContent = LEARNING_LABELS[key];
+          const textDiv = document.createElement('div');
+          textDiv.className = 'learning-entry-text';
+          textDiv.innerHTML = linkifyText(o[key]);
+          item.appendChild(labelDiv);
+          item.appendChild(textDiv);
+          if (key === 'conceptualization') {
+            const bookmarked = isBookmarked(o.id, key);
+            const bmBtn = document.createElement('button');
+            bmBtn.className = 'btn-bookmark-learning';
+            bmBtn.textContent = bookmarked ? '⭐' : '☆';
+            bmBtn.title = bookmarked ? 'ブックマーク解除' : 'ブックマークに追加';
+            bmBtn.addEventListener('click', () => {
+              toggleBookmark(o.id, key, dateStr, LEARNING_LABELS[key], o[key]);
+            });
+            item.appendChild(bmBtn);
+          }
           dateDiv.appendChild(item);
         });
       });
