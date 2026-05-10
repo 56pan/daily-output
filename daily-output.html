@@ -367,6 +367,11 @@
       color: #f5a623; opacity: 0.6; transition: opacity 0.15s;
     }
     .btn-bookmark-learning:hover { opacity: 1; }
+    .bookmark-entry-wrapper { margin-bottom: 12px; }
+    .bookmark-entry-wrapper .learning-entry { margin-bottom: 4px; }
+    .bookmark-entry-wrapper .learning-entry:last-child { margin-bottom: 0; }
+    .bookmark-sub-field { background: #fafafa; border-color: #dde; margin-left: 12px; }
+    .bookmark-sub-field .learning-entry-label { color: #777; }
     .btn-delete-memo {
       position: absolute; top: 8px; right: 10px;
       background: none; border: none; cursor: pointer;
@@ -1540,12 +1545,24 @@
   function closeBookmarkModal() {
     document.getElementById('bookmarkModal').style.display = 'none';
   }
+  // ②～⑧のキーとラベル（③は主カードで表示済みのため補足表示対象）
+  const BOOKMARK_SUB_FIELDS = [
+    { key: 'experience',        label: '① 経験' },
+    { key: 'reflection',        label: '② 振り返り' },
+    { key: 'practice',          label: '④ 実践' },
+    { key: 'concrete_abstract', label: '⑤ 具体→抽象→具体' },
+    { key: 'whywhy',            label: '⑥ なぜなぜ分析' },
+    { key: 'tgt',               label: '⑦ TGT' },
+    { key: 'emotion',           label: '⑧ 感情の振り返り' },
+  ];
+
   function renderBookmarkList() {
     const list = document.getElementById('bookmarkList');
     if (!memoData.bookmarks.length) {
       list.innerHTML = '<div class="empty-message">ブックマークはありません</div>'; return;
     }
     list.innerHTML = '';
+    const allData = loadData();
     // 日付ごとにグループ化
     const byDate = {};
     memoData.bookmarks.forEach(b => {
@@ -1560,6 +1577,11 @@
       dateLabel.textContent = formatDateJP(dateStr);
       dateDiv.appendChild(dateLabel);
       byDate[dateStr].forEach(b => {
+        // ブックマーク全体をまとめるラッパー
+        const wrapper = document.createElement('div');
+        wrapper.className = 'bookmark-entry-wrapper';
+
+        // ③概念化メインカード
         const item = document.createElement('div');
         item.className = 'learning-entry conceptualization';
         item.style.position = 'relative';
@@ -1577,7 +1599,28 @@
         item.appendChild(labelDiv);
         item.appendChild(textDiv);
         item.appendChild(delBtn);
-        dateDiv.appendChild(item);
+        wrapper.appendChild(item);
+
+        // ②④～⑧の補足フィールドを表示
+        const entries = allData[dateStr] || [];
+        const entry = entries.find(o => o.id === b.entryId);
+        if (entry) {
+          BOOKMARK_SUB_FIELDS.forEach(({ key, label }) => {
+            if (!entry[key]) return;
+            const subItem = document.createElement('div');
+            subItem.className = 'learning-entry bookmark-sub-field';
+            const subLabel = document.createElement('div');
+            subLabel.className = 'learning-entry-label';
+            subLabel.textContent = label;
+            const subText = document.createElement('div');
+            subText.className = 'learning-entry-text';
+            subText.innerHTML = linkifyText(entry[key]);
+            subItem.appendChild(subLabel);
+            subItem.appendChild(subText);
+            wrapper.appendChild(subItem);
+          });
+        }
+        dateDiv.appendChild(wrapper);
       });
       list.appendChild(dateDiv);
     });
