@@ -1546,14 +1546,40 @@
       list.innerHTML = '<div class="empty-message">ブックマークはありません</div>'; return;
     }
     list.innerHTML = '';
+    // 日付ごとにグループ化
+    const byDate = {};
     memoData.bookmarks.forEach(b => {
-      const div = document.createElement('div');
-      div.className = 'memo-entry';
-      div.innerHTML = `
-        <div class="memo-entry-date">⭐ ${formatDateJP(b.dateStr)} ／ ${escHtml(b.label)}</div>
-        <div class="memo-entry-text">${linkifyText(b.text)}</div>
-        <button class="btn-delete-memo" onclick="deleteBookmark('${b.id}')">&#x2715;</button>`;
-      list.appendChild(div);
+      if (!byDate[b.dateStr]) byDate[b.dateStr] = [];
+      byDate[b.dateStr].push(b);
+    });
+    const sortedDates = Object.keys(byDate).sort().reverse();
+    sortedDates.forEach(dateStr => {
+      const dateDiv = document.createElement('div');
+      const dateLabel = document.createElement('div');
+      dateLabel.className = 'learning-date-header';
+      dateLabel.textContent = formatDateJP(dateStr);
+      dateDiv.appendChild(dateLabel);
+      byDate[dateStr].forEach(b => {
+        const item = document.createElement('div');
+        item.className = 'learning-entry conceptualization';
+        item.style.position = 'relative';
+        const labelDiv = document.createElement('div');
+        labelDiv.className = 'learning-entry-label';
+        labelDiv.textContent = b.label;
+        const textDiv = document.createElement('div');
+        textDiv.className = 'learning-entry-text';
+        textDiv.innerHTML = linkifyText(b.text);
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn-bookmark-learning';
+        delBtn.textContent = '⭐';
+        delBtn.title = 'ブックマーク解除';
+        delBtn.addEventListener('click', () => deleteBookmark(b.id));
+        item.appendChild(labelDiv);
+        item.appendChild(textDiv);
+        item.appendChild(delBtn);
+        dateDiv.appendChild(item);
+      });
+      list.appendChild(dateDiv);
     });
   }
   async function deleteBookmark(id) {
