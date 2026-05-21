@@ -772,9 +772,11 @@
     { key: 'concrete_abstract', label: '⑤ 具体→抽象→具体' },
     { key: 'whywhy',            label: '⑥ なぜなぜ分析' },
     { key: 'tgt',               label: '⑦ TGT（Three Good Things）' },
-    { key: 'emotion',           label: '⑧ 感情の振り返り' },
-    { key: 'notes',             label: '⑨ その他メモ' },
-    { key: 'tomorrow_todo',     label: '⑩ 明日のToDo' },
+    { key: 'flexible_mind',     label: '⑧ しなやかマインドセット' },
+    { key: 'habit_review',      label: '⑨ 今日の習慣の振り返り' },
+    { key: 'emotion',           label: '⑩ 感情の振り返り' },
+    { key: 'notes',             label: '⑪ その他メモ', tall: true },
+    { key: 'tomorrow_todo',     label: '⑫ 明日のToDo' },
   ];
 
   // --- State ---
@@ -1177,7 +1179,7 @@
         ${FIELD_DEFS.map(f=>`
           <div class="form-field">
             <label>${escHtml(f.label)}</label>
-            <textarea id="nf_${f.key}" placeholder="${fieldPlaceholder(f.key)}" rows="2"></textarea>
+            <textarea id="nf_${f.key}" placeholder="${fieldPlaceholder(f.key)}" rows="2"${f.tall?' style="min-height:112px;"':''}></textarea>
           </div>`).join('')}
         <div class="form-actions">
           <button class="btn btn-secondary" onclick="clearNewForm()">クリア</button>
@@ -1196,6 +1198,8 @@
       whywhy:'なぜ？を繰り返して根本原因を探る...',
       concrete_abstract:'具体的な経験から抽象的な法則・原則を見つけ、別の場面へ応用する...',
       tgt:'その日の良かったことのタイトル、詳細、自分の気持ち',
+      flexible_mind:'自分の行動、その時の考え感情、硬直orしなやか、しなやか変換',
+      habit_review:'今日の習慣はできたか？気づいたこと...',
       emotion:'今日感じた感情・気持ち、その原因や気づき...',
       notes:'その他のメモ、気になったこと...',
       tomorrow_todo:'明日やること・取り組みたいこと...',
@@ -1235,7 +1239,7 @@
     const editHtml=FIELD_DEFS.map(f=>`
       <div class="form-field">
         <label>${escHtml(f.label)}</label>
-        <textarea id="ef_${output.id}_${f.key}" rows="2">${escHtml(output[f.key]||'')}</textarea>
+        <textarea id="ef_${output.id}_${f.key}" rows="2"${f.tall?' style="min-height:112px;"':''}>${escHtml(output[f.key]||'')}</textarea>
       </div>`).join('');
     entry.innerHTML=`
       <div class="output-entry-header">
@@ -1553,7 +1557,9 @@
     { key: 'concrete_abstract', label: '⑤ 具体→抽象→具体' },
     { key: 'whywhy',            label: '⑥ なぜなぜ分析' },
     { key: 'tgt',               label: '⑦ TGT' },
-    { key: 'emotion',           label: '⑧ 感情の振り返り' },
+    { key: 'flexible_mind',     label: '⑧ しなやかマインド' },
+    { key: 'habit_review',      label: '⑨ 習慣の振り返り' },
+    { key: 'emotion',           label: '⑩ 感情の振り返り' },
   ];
 
   function renderBookmarkList() {
