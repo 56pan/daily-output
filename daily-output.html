@@ -1625,6 +1625,17 @@
         const item = document.createElement('div');
         item.className = 'learning-entry conceptualization';
         item.style.position = 'relative';
+        // カテゴリバッジ
+        const entries = allData[dateStr] || [];
+        const entry = entries.find(o => o.id === b.entryId);
+        if (entry && entry.category) {
+          const cat = categoryInfo(entry.category);
+          const badge = document.createElement('span');
+          badge.className = `category-badge ${cat.cls}`;
+          badge.textContent = cat.label;
+          badge.style.cssText = 'display:inline-block;margin-bottom:6px;font-size:10px;';
+          item.appendChild(badge);
+        }
         const labelDiv = document.createElement('div');
         labelDiv.className = 'learning-entry-label';
         labelDiv.textContent = b.label;
@@ -1642,8 +1653,6 @@
         wrapper.appendChild(item);
 
         // ②④～⑧の補足フィールドを表示
-        const entries = allData[dateStr] || [];
-        const entry = entries.find(o => o.id === b.entryId);
         if (entry) {
           BOOKMARK_SUB_FIELDS.forEach(({ key, label }) => {
             if (!entry[key]) return;
