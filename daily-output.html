@@ -367,6 +367,35 @@
       color: #f5a623; opacity: 0.6; transition: opacity 0.15s;
     }
     .btn-bookmark-learning:hover { opacity: 1; }
+    .learning-filter-row {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      padding: 8px 0 4px; border-bottom: 1px solid #eee; margin-bottom: 8px;
+    }
+    .learning-filter-btn {
+      padding: 3px 10px; border-radius: 12px; border: 1px solid #ddd;
+      background: #f5f5f5; font-size: 12px; cursor: pointer; font-family: inherit;
+      color: #555; transition: all 0.15s;
+    }
+    .learning-filter-btn.active {
+      background: #3498db; color: #fff; border-color: #3498db;
+    }
+    .learning-filter-btn.active.cat-news     { background: #3498db; border-color: #3498db; }
+    .learning-filter-btn.active.cat-bookclub { background: #27ae60; border-color: #27ae60; }
+    .learning-filter-btn.active.cat-reading  { background: #f39c12; border-color: #f39c12; }
+    .learning-filter-btn.active.cat-other    { background: #95a5a6; border-color: #95a5a6; }
+    .learning-category-row {
+      display: flex; align-items: center; gap: 8px;
+      margin: 10px 0 4px; padding: 4px 0;
+      border-top: 1px solid #f0f0f0;
+    }
+    .learning-category-row:first-child { border-top: none; margin-top: 0; }
+    .learning-cat-select {
+      flex: 1; font-size: 12px; padding: 3px 6px;
+      border-radius: 6px; border: 1px solid #ddd;
+      background: #fafafa; cursor: pointer; font-family: inherit;
+    }
+    .learning-cat-select:focus { outline: none; border-color: #3498db; }
+    .cat-badge-inline { font-size: 10px; padding: 1px 6px; white-space: nowrap; }
     .bookmark-entry-wrapper { margin-bottom: 12px; }
     .bookmark-entry-wrapper .learning-entry { margin-bottom: 4px; }
     .bookmark-entry-wrapper .learning-entry:last-child { margin-bottom: 0; }
@@ -427,6 +456,22 @@
       box-shadow: 0 0 0 3px rgba(52,152,219,0.12);
     }
     .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+    .category-select-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .category-select-wrap label { font-size: 12px; font-weight: 700; color: #555; white-space: nowrap; }
+    .category-select {
+      flex: 1; border: 1px solid #ddd; border-radius: 6px;
+      padding: 6px 10px; font-size: 13px; font-family: inherit;
+      background: #fff; cursor: pointer;
+    }
+    .category-select:focus { outline: none; border-color: #3498db; box-shadow: 0 0 0 3px rgba(52,152,219,0.12); }
+    .category-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 12px;
+      font-size: 11px; font-weight: 700; color: #fff; margin-bottom: 6px;
+    }
+    .cat-news     { background: #3498db; }
+    .cat-bookclub { background: #27ae60; }
+    .cat-reading  { background: #f39c12; }
+    .cat-other    { background: #95a5a6; }
 
     /* ===== BUTTONS ===== */
     .btn {
@@ -631,6 +676,7 @@
       <h3>学びの一覧</h3>
       <button class="btn-close-modal" onclick="closeLearningModal()">&#x2715;</button>
     </div>
+    <div class="learning-filter-row" id="learningFilterRow"></div>
     <div id="learningList"></div>
   </div>
 </div>
@@ -769,14 +815,13 @@
     { key: 'reflection',        label: '② 振り返り' },
     { key: 'conceptualization', label: '③ 概念化（他の状況への応用・学び）' },
     { key: 'practice',          label: '④ 実践' },
-    { key: 'concrete_abstract', label: '⑤ 具体→抽象→具体' },
-    { key: 'whywhy',            label: '⑥ なぜなぜ分析' },
-    { key: 'tgt',               label: '⑦ TGT（Three Good Things）' },
-    { key: 'flexible_mind',     label: '⑧ しなやかマインドセット' },
-    { key: 'habit_review',      label: '⑨ 今日の習慣の振り返り' },
-    { key: 'emotion',           label: '⑩ 感情の振り返り' },
-    { key: 'notes',             label: '⑪ その他メモ', tall: true },
-    { key: 'tomorrow_todo',     label: '⑫ 明日のToDo' },
+    { key: 'concrete_abstract', label: '⑤ 具体→抽象→具体（学びを抽象的にとらえて別場面で応用）' },
+    { key: 'whywhy',            label: '⑥ なぜなぜ分析（課題に対して根本的な原因を見つける）' },
+    { key: 'tgt',               label: '⑦ TGT（Three Good Things）（ポジティブな気持ちや幸福感に繋げる）' },
+    { key: 'flexible_mind',     label: '⑧ しなやかマインドセット（しなやかマインドを定着させる）' },
+    { key: 'habit_review',      label: '⑨ 今日の習慣の振り返り（できたこと、できなかったこと、理由を振り返る）' },
+    { key: 'notes',             label: '⑩ その他メモ', tall: true },
+    { key: 'tomorrow_todo',     label: '⑪ 明日のToDo' },
   ];
 
   // --- State ---
@@ -1006,7 +1051,7 @@
     sec.innerHTML = `
       <div class="unrecorded-title">📋 未記録の項目</div>
       <div class="unrecorded-tags">
-        ${unrecorded.map(f=>`<span class="unrecorded-tag">${escHtml(f.label)}</span>`).join('')}
+        ${unrecorded.map(f=>`<span class="unrecorded-tag">${escHtml(f.label.replace(/（[^）]*）/g,'').trim())}</span>`).join('')}
       </div>`;
   }
 
@@ -1017,8 +1062,8 @@
     if (!selectedDate || isMobile()) return;
     const data = loadData();
     appendTodoPrevDay(extra, data);
-    extra.appendChild(buildWeekSummaryLeft(data));
     extra.appendChild(buildMonthSummaryLeft(data));
+    extra.appendChild(buildWeekSummaryLeft(data));
   }
 
   function loadTodoChecks(dateStr) {
@@ -1029,6 +1074,15 @@
     const checks = loadTodoChecks(dateStr);
     checks[text] = checked;
     localStorage.setItem(`todoChecks_${dateStr}`, JSON.stringify(checks));
+  }
+  function loadGoalChecks(storageKey) {
+    try { return JSON.parse(localStorage.getItem(`goalChecks_${storageKey}`) || '{}'); }
+    catch { return {}; }
+  }
+  function saveGoalCheck(storageKey, text, checked) {
+    const checks = loadGoalChecks(storageKey);
+    checks[text] = checked;
+    localStorage.setItem(`goalChecks_${storageKey}`, JSON.stringify(checks));
   }
 
   function appendTodoPrevDay(container, data) {
@@ -1042,7 +1096,7 @@
     sec.className = 'left-section';
     const title = document.createElement('div');
     title.className = 'left-section-title';
-    title.innerHTML = `今日のToDo <span style="font-size:10px;color:#999;font-weight:400;">昨日の⑩より</span>`;
+    title.innerHTML = `今日のToDo <span style="font-size:10px;color:#999;font-weight:400;">昨日の⑪より</span>`;
     sec.appendChild(title);
     lines.forEach(t => {
       const label = document.createElement('label');
@@ -1069,48 +1123,60 @@
     return `<div class="left-summary-item"><strong>#${i+1}</strong>${rows}</div>`;
   }
 
-  function buildWeekSummaryLeft(data) {
+  function buildGoalChecklist(container, goalText, storageKey, title, subtitle) {
+    const lines = goalText.split('\n').map(l => l.trim()).filter(l => l);
     const sec = document.createElement('div');
     sec.className = 'left-section';
+    const titleEl = document.createElement('div');
+    titleEl.className = 'left-section-title';
+    titleEl.innerHTML = `${title} <span style="font-size:10px;color:#999;font-weight:400;">${subtitle}</span>`;
+    sec.appendChild(titleEl);
+    if (!lines.length) {
+      const empty = document.createElement('div');
+      empty.className = 'goal-section-empty';
+      empty.style.cssText = 'cursor:pointer;padding:4px 0;';
+      empty.textContent = '未設定（目標管理から入力）';
+      empty.onclick = () => openGoalModal();
+      sec.appendChild(empty);
+    } else {
+      const checks = loadGoalChecks(storageKey);
+      lines.forEach(t => {
+        const label = document.createElement('label');
+        label.className = 'todo-item';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = !!checks[t];
+        cb.addEventListener('change', () => saveGoalCheck(storageKey, t, cb.checked));
+        const span = document.createElement('span');
+        span.className = 'todo-item-text';
+        span.innerHTML = linkifyText(t);
+        label.appendChild(cb);
+        label.appendChild(span);
+        sec.appendChild(label);
+      });
+    }
+    container.appendChild(sec);
+  }
+
+  function buildWeekSummaryLeft(data) {
+    const wKey = getWeekKey(selectedDate);
+    const wGoal = memoData.weeklyGoals[wKey] || '';
     const sel=new Date(selectedDate), dow=(sel.getDay()+6)%7;
     const mon=new Date(sel); mon.setDate(sel.getDate()-dow);
     const sun=new Date(mon); sun.setDate(mon.getDate()+6);
-    const wDates=Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return formatDate(d);});
-    const active=wDates.filter(d=>(data[d]||[]).length>0);
-    const total=active.reduce((s,d)=>s+data[d].length,0);
     const [,mm,md]=formatDate(mon).split('-'), [,sm,sd]=formatDate(sun).split('-');
-    const body=active.length===0
-      ?'<div class="left-empty">今週のアウトプットはありません</div>'
-      :`<div class="left-stat">記録${active.length}日 / 合計${total}件</div>`
-        +active.map(d=>{const[,m2,d2]=d.split('-');return`<div class="left-summary-date">${parseInt(m2)}月${parseInt(d2)}日</div>`+(data[d]||[]).map((o,i)=>leftSummaryItem(o,i)).join('');}).join('');
-    const wKey = getWeekKey(selectedDate);
-    const wGoal = memoData.weeklyGoals[wKey] || '';
-    const wGoalHtml = `<div class="goal-section" onclick="openGoalModal()">
-      <div class="goal-section-label">📆 今週の目標</div>
-      ${wGoal ? `<div class="goal-section-text">${escHtml(wGoal)}</div>` : '<div class="goal-section-empty">未設定（クリックして入力）</div>'}
-    </div>`;
-    sec.innerHTML=`<div class="left-section-title">週のまとめ <span style="font-size:10px;color:#999;font-weight:400;">${parseInt(mm)}/${parseInt(md)}〜${parseInt(sm)}/${parseInt(sd)}</span></div>${wGoalHtml}${body}`;
-    return sec;
+    const wrap = document.createElement('div');
+    buildGoalChecklist(wrap, wGoal, `week_${wKey}`, '📆 今週の目標', `${parseInt(mm)}/${parseInt(md)}〜${parseInt(sm)}/${parseInt(sd)}`);
+    return wrap.firstChild;
   }
 
   function buildMonthSummaryLeft(data) {
-    const sec=document.createElement('div');
-    sec.className='left-section';
-    const sel=new Date(selectedDate), year=sel.getFullYear(), month=sel.getMonth();
-    const active=Object.keys(data).filter(d=>{const dt=new Date(d);return dt.getFullYear()===year&&dt.getMonth()===month&&data[d].length>0;}).sort();
-    const total=active.reduce((s,d)=>s+data[d].length,0);
-    const body=active.length===0
-      ?'<div class="left-empty">今月のアウトプットはありません</div>'
-      :`<div class="left-stat">記録${active.length}日 / 合計${total}件</div>`
-        +active.map(d=>{const[,m2,d2]=d.split('-');return`<div class="left-summary-date">${parseInt(m2)}月${parseInt(d2)}日</div>`+(data[d]||[]).map((o,i)=>leftSummaryItem(o,i)).join('');}).join('');
     const mKey = getMonthKey(selectedDate);
     const mGoal = memoData.monthlyGoals[mKey] || '';
-    const mGoalHtml = `<div class="goal-section" onclick="openGoalModal()">
-      <div class="goal-section-label">📅 今月の目標</div>
-      ${mGoal ? `<div class="goal-section-text">${escHtml(mGoal)}</div>` : '<div class="goal-section-empty">未設定（クリックして入力）</div>'}
-    </div>`;
-    sec.innerHTML=`<div class="left-section-title">月のまとめ <span style="font-size:10px;color:#999;font-weight:400;">${year}年${month+1}月</span></div>${mGoalHtml}${body}`;
-    return sec;
+    const sel=new Date(selectedDate);
+    const wrap = document.createElement('div');
+    buildGoalChecklist(wrap, mGoal, `month_${mKey}`, '📅 今月の目標', `${sel.getFullYear()}年${sel.getMonth()+1}月`);
+    return wrap.firstChild;
   }
 
   // ===== RIGHT PANEL =====
@@ -1143,8 +1209,8 @@
         while(tmp.firstChild) wrap.appendChild(tmp.firstChild);
         panel.appendChild(wrap);
       }
-      panel.appendChild(buildWeekSummaryRight(data));
-      panel.appendChild(buildMonthSummaryRight(data));
+      panel.appendChild(buildMonthSummaryLeft(data));
+      panel.appendChild(buildWeekSummaryLeft(data));
     }
   }
 
@@ -1176,6 +1242,7 @@
         <span style="font-size:12px;color:#999;font-weight:400;">${formatDateJP(selectedDate)}</span>
       </div>
       <div class="output-form">
+        ${categorySelectHTML('nf_category')}
         ${FIELD_DEFS.map(f=>`
           <div class="form-field">
             <label>${escHtml(f.label)}</label>
@@ -1208,10 +1275,12 @@
 
   function clearNewForm() {
     FIELD_DEFS.forEach(f=>{const el=document.getElementById(`nf_${f.key}`);if(el)el.value='';});
+    const cat=document.getElementById('nf_category'); if(cat) cat.value='';
   }
 
   async function saveNewOutput() {
     const entry={id:generateId(),createdAt:new Date().toISOString()};
+    entry.category = document.getElementById('nf_category')?.value || '';
     FIELD_DEFS.forEach(f=>{entry[f.key]=(document.getElementById(`nf_${f.key}`)?.value||'').trim();});
     if(!FIELD_DEFS.some(f=>entry[f.key])){alert('少なくとも1つの項目を入力してください。');return;}
     const data=loadData();
@@ -1233,10 +1302,12 @@
     const entry=document.createElement('div');
     entry.className='output-entry';
     entry.id=`entry_${output.id}`;
-    const viewHtml=FIELD_DEFS.filter(f=>output[f.key])
+    const cat = categoryInfo(output.category||'');
+    const badgeHtml = cat.value ? `<span class="category-badge ${cat.cls}">${escHtml(cat.label)}</span>` : '';
+    const viewHtml= badgeHtml + FIELD_DEFS.filter(f=>output[f.key])
       .map(f=>`<div class="field-item"><span class="field-label">${escHtml(f.label)}</span><span class="field-value">${linkifyText(output[f.key])}</span></div>`)
       .join('');
-    const editHtml=FIELD_DEFS.map(f=>`
+    const editHtml= categorySelectHTML(`ef_cat_${output.id}`, output.category||'') + FIELD_DEFS.map(f=>`
       <div class="form-field">
         <label>${escHtml(f.label)}</label>
         <textarea id="ef_${output.id}_${f.key}" rows="2"${f.tall?' style="min-height:112px;"':''}>${escHtml(output[f.key]||'')}</textarea>
@@ -1276,6 +1347,7 @@
     if(!dayData) return;
     const idx=dayData.findIndex(e=>e.id===id);
     if(idx===-1) return;
+    dayData[idx].category = document.getElementById(`ef_cat_${id}`)?.value || '';
     FIELD_DEFS.forEach(f=>{dayData[idx][f.key]=(document.getElementById(`ef_${id}_${f.key}`)?.value||'').trim();});
     dayData[idx].updatedAt=new Date().toISOString();
     await saveDataForDate(selectedDate, dayData);
@@ -1315,44 +1387,6 @@
     return sec;
   }
 
-  function buildWeekSummaryRight(data) {
-    const sec=document.createElement('div');
-    sec.className='panel-section';
-    const sel=new Date(selectedDate), dow=(sel.getDay()+6)%7;
-    const mon=new Date(sel); mon.setDate(sel.getDate()-dow);
-    const sun=new Date(mon); sun.setDate(mon.getDate()+6);
-    const wDates=Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return formatDate(d);});
-    const active=wDates.filter(d=>(data[d]||[]).length>0);
-    const total=active.reduce((s,d)=>s+data[d].length,0);
-    const body=active.length===0
-      ?'<div class="empty-message">今週のアウトプットはありません</div>'
-      :`<div class="summary-stat">記録日数：${active.length}日 / 合計：${total}件</div>`
-        +active.map(d=>`<div class="summary-date-group"><div class="summary-date-label">${formatDateJP(d)}</div>${summaryItems(data[d])}</div>`).join('');
-    sec.innerHTML=`
-      <div class="section-title">週のまとめ
-        <span style="font-weight:400;color:#999;font-size:12px;">${formatDateJP(formatDate(mon))} 〜 ${formatDateJP(formatDate(sun))}</span>
-      </div>
-      <div class="summary-content">${body}</div>`;
-    return sec;
-  }
-
-  function buildMonthSummaryRight(data) {
-    const sec=document.createElement('div');
-    sec.className='panel-section';
-    const sel=new Date(selectedDate), year=sel.getFullYear(), month=sel.getMonth();
-    const active=Object.keys(data).filter(d=>{const dt=new Date(d);return dt.getFullYear()===year&&dt.getMonth()===month&&data[d].length>0;}).sort();
-    const total=active.reduce((s,d)=>s+data[d].length,0);
-    const body=active.length===0
-      ?'<div class="empty-message">今月のアウトプットはありません</div>'
-      :`<div class="summary-stat">記録日数：${active.length}日 / 合計：${total}件</div>`
-        +active.map(d=>`<div class="summary-date-group"><div class="summary-date-label">${formatDateJP(d)}</div>${summaryItems(data[d])}</div>`).join('');
-    sec.innerHTML=`
-      <div class="section-title">月のまとめ
-        <span style="font-weight:400;color:#999;font-size:12px;">${year}年${month+1}月</span>
-      </div>
-      <div class="summary-content">${body}</div>`;
-    return sec;
-  }
 
 
   // ===== MEMO DATA =====
@@ -1686,6 +1720,27 @@
     });
   }
 
+  // ===== カテゴリ =====
+  const CATEGORIES = [
+    { value: '',         label: 'カテゴリなし', cls: '' },
+    { value: 'news',     label: 'ニュース',     cls: 'cat-news' },
+    { value: 'bookclub', label: '読書部',       cls: 'cat-bookclub' },
+    { value: 'reading',  label: '読書',         cls: 'cat-reading' },
+    { value: 'other',    label: 'その他',       cls: 'cat-other' },
+  ];
+  function categoryInfo(value) {
+    return CATEGORIES.find(c => c.value === value) || CATEGORIES[0];
+  }
+  function categorySelectHTML(id, selected='') {
+    const opts = CATEGORIES.map(c =>
+      `<option value="${c.value}"${c.value===selected?' selected':''}>${c.label}</option>`
+    ).join('');
+    return `<div class="category-select-wrap">
+      <label>カテゴリ</label>
+      <select class="category-select" id="${id}">${opts}</select>
+    </div>`;
+  }
+
   // ===== 学びの一覧 =====
   const LEARNING_KEYS = ['conceptualization', 'experience', 'reflection', 'practice', 'concrete_abstract', 'whywhy'];
   const LEARNING_LABELS = {
@@ -1697,7 +1752,43 @@
     whywhy:            '⑥ なぜなぜ分析',
   };
 
+  async function saveCategoryForEntry(dateStr, entryId, newCategory) {
+    const data = loadData();
+    const entries = data[dateStr] || [];
+    const idx = entries.findIndex(e => e.id === entryId);
+    if (idx === -1) return;
+    entries[idx].category = newCategory;
+    await saveDataForDate(dateStr, entries);
+    // 右パネルが該当日を表示中なら再描画
+    if (selectedDate === dateStr) renderRightPanel();
+  }
+
+  let learningFilter = '__all__';
+
+  function renderLearningFilterRow() {
+    const row = document.getElementById('learningFilterRow');
+    row.innerHTML = '';
+    const filters = [
+      { value: '__all__', label: 'すべて', cls: '' },
+      ...CATEGORIES.filter(c => c.value),
+      { value: '__none__', label: 'カテゴリなし', cls: '' },
+    ];
+    filters.forEach(f => {
+      const btn = document.createElement('button');
+      btn.className = `learning-filter-btn${f.cls ? ' ' + f.cls : ''}${learningFilter === f.value ? ' active' : ''}`;
+      btn.textContent = f.label;
+      btn.addEventListener('click', () => {
+        learningFilter = f.value;
+        renderLearningFilterRow();
+        renderLearningList();
+      });
+      row.appendChild(btn);
+    });
+  }
+
   function openLearningModal() {
+    learningFilter = '__all__';
+    renderLearningFilterRow();
     renderLearningList();
     document.getElementById('learningModal').style.display = 'flex';
   }
@@ -1707,8 +1798,13 @@
   function renderLearningList() {
     const list = document.getElementById('learningList');
     const data = loadData();
+    const matchesFilter = o => {
+      if (learningFilter === '__all__') return true;
+      if (learningFilter === '__none__') return !o.category;
+      return o.category === learningFilter;
+    };
     const dates = Object.keys(data)
-      .filter(d => (data[d]||[]).some(o => LEARNING_KEYS.some(k => o[k])))
+      .filter(d => (data[d]||[]).some(o => matchesFilter(o) && LEARNING_KEYS.some(k => o[k])))
       .sort().reverse();
     if (dates.length === 0) {
       list.innerHTML = '<div class="empty-message">まだ記録がありません</div>';
@@ -1722,7 +1818,42 @@
       dateLabel.className = 'learning-date-header';
       dateLabel.textContent = formatDateJP(dateStr);
       dateDiv.appendChild(dateLabel);
-      entries.forEach(o => {
+      entries.forEach((o, oi) => {
+        const hasFields = LEARNING_KEYS.some(k => o[k]);
+        if (!hasFields) return;
+        if (!matchesFilter(o)) return;
+
+        // カテゴリ選択行
+        const catRow = document.createElement('div');
+        catRow.className = 'learning-category-row';
+        const catInfo = categoryInfo(o.category || '');
+        const catSelect = document.createElement('select');
+        catSelect.className = 'category-select learning-cat-select';
+        CATEGORIES.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.value;
+          opt.textContent = c.label;
+          if (c.value === (o.category || '')) opt.selected = true;
+          catSelect.appendChild(opt);
+        });
+        catSelect.addEventListener('change', () => {
+          saveCategoryForEntry(dateStr, o.id, catSelect.value);
+          // バッジ色を即時更新
+          const badge = catRow.querySelector('.cat-badge-inline');
+          const newCat = categoryInfo(catSelect.value);
+          badge.textContent = newCat.value ? newCat.label : '';
+          badge.className = `cat-badge-inline category-badge ${newCat.cls}`;
+          badge.style.display = newCat.value ? '' : 'none';
+        });
+        const badge = document.createElement('span');
+        badge.className = `cat-badge-inline category-badge ${catInfo.cls}`;
+        badge.textContent = catInfo.value ? catInfo.label : '';
+        badge.style.display = catInfo.value ? '' : 'none';
+        catRow.appendChild(badge);
+        catRow.appendChild(catSelect);
+        dateDiv.appendChild(catRow);
+
+        // フィールド一覧
         LEARNING_KEYS.forEach(key => {
           if (!o[key]) return;
           const item = document.createElement('div');
