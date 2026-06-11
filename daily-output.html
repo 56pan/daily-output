@@ -1527,14 +1527,17 @@
     banner.style.display = 'block';
   }
 
-  // えこひいきバナー（日付ベースのシードでランダム選択）
+  // えこひいきバナー（1エントリのナンバリングテキストから1項目をランダム表示）
   function updateEkohikiBanner() {
     const banner = document.getElementById('ekohikiBanner');
     const textEl = document.getElementById('ekohikiText');
     if (!memoData.ekohiki || memoData.ekohiki.length === 0) { banner.style.display = 'none'; return; }
+    const rawText = memoData.ekohiki[0].text;
+    const items = rawText.split(/\d+\.\s+/).map(s => s.trim()).filter(Boolean);
+    if (items.length === 0) { banner.style.display = 'none'; return; }
     const seed = parseInt(todayStr().replace(/-/g, ''));
-    const idx  = (seed * 13 + 7) % memoData.ekohiki.length;
-    textEl.textContent = `「${memoData.ekohiki[idx].text}」`;
+    const idx  = (seed * 13 + 7) % items.length;
+    textEl.textContent = `「${items[idx]}」`;
     banner.style.display = 'block';
   }
 
