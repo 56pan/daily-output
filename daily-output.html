@@ -1063,7 +1063,21 @@
   }
 
   // ===== INIT =====
+  function cleanupOldChecks() {
+    const currentMonth = todayStr().slice(0, 7); // 'YYYY-MM'
+    const toDelete = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if (key.startsWith('todoChecks_') && key.slice(11, 18) < currentMonth) toDelete.push(key);
+      else if (key.startsWith('goalChecks_week_') && key.slice(16, 23) < currentMonth) toDelete.push(key);
+      else if (key.startsWith('goalChecks_month_') && key.slice(17) < currentMonth) toDelete.push(key);
+    }
+    toDelete.forEach(k => localStorage.removeItem(k));
+  }
+
   function init() {
+    cleanupOldChecks();
     updateMaximBanner();
     updateEkohikiBanner();
     updateGoalBanner();
@@ -1543,16 +1557,16 @@
       memoData.like         = JSON.parse(localStorage.getItem('likeMemos')    || '[]');
       memoData.dislike      = JSON.parse(localStorage.getItem('dislikeMemos') || '[]');
       memoData.habits       = JSON.parse(localStorage.getItem('habitMemos')   || '[]');
-    } catch { memoData = { idea: [], maxim: [], ekohiki: [], goal: '', weeklyGoals: {}, monthlyGoals: {}, bookmarks: [], like: [], dislike: [] }; }
+    } catch { memoData = { idea: [], maxim: [], ekohiki: [], goal: '', weeklyGoals: {}, monthlyGoals: {}, bookmarks: [], like: [], dislike: [], habits: [] }; }
   }
 
   async function loadMemosFromFirestore() {
     try {
       const ref = db.collection('users').doc(currentUser.uid).collection('memos');
-      const [ideaDoc, maximDoc, ekohikiDoc, goalDoc, weekDoc, monthDoc, bmDoc, likeDoc, dislikeDoc] = await Promise.all([
+      const [ideaDoc, maximDoc, ekohikiDoc, goalDoc, weekDoc, monthDoc, bmDoc, likeDoc, dislikeDoc, habitsDoc] = await Promise.all([
         ref.doc('idea').get(), ref.doc('maxim').get(), ref.doc('ekohiki').get(), ref.doc('goal').get(),
         ref.doc('weeklyGoals').get(), ref.doc('monthlyGoals').get(),
-        ref.doc('bookmarks').get(), ref.doc('like').get(), ref.doc('dislike').get()
+        ref.doc('bookmarks').get(), ref.doc('like').get(), ref.doc('dislike').get(), ref.doc('habits').get()
       ]);
       memoData.idea         = ideaDoc.exists      ? ideaDoc.data().entries      || [] : [];
       memoData.maxim        = maximDoc.exists     ? maximDoc.data().entries     || [] : [];
@@ -1563,6 +1577,7 @@
       memoData.bookmarks    = bmDoc.exists        ? bmDoc.data().entries        || [] : [];
       memoData.like         = likeDoc.exists      ? likeDoc.data().entries      || [] : [];
       memoData.dislike      = dislikeDoc.exists   ? dislikeDoc.data().entries   || [] : [];
+      memoData.habits       = habitsDoc.exists    ? habitsDoc.data().entries    || [] : [];
     } catch(e) { console.error('Memo load error:', e); }
   }
 
