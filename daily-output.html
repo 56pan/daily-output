@@ -1028,6 +1028,7 @@
       localData = {};
       snapshot.forEach(doc => { localData[doc.id] = doc.data().entries || []; });
       await loadMemosFromFirestore();
+      await loadChecksFromFirestore();
     } catch (e) {
       console.error('データ読み込みエラー:', e);
       alert('データの読み込みに失敗しました: ' + e.message);
@@ -1038,6 +1039,7 @@
     try { localData = JSON.parse(localStorage.getItem('outputData') || '{}'); }
     catch { localData = {}; }
     loadMemosFromLocal();
+    loadChecksFromLocal();
   }
 
   function loadData() { return localData; }
@@ -1065,6 +1067,7 @@
   // ===== INIT =====
   function cleanupOldChecks() {
     const currentMonth = todayStr().slice(0, 7); // 'YYYY-MM'
+    // localStorage
     const toDelete = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -1074,6 +1077,12 @@
       else if (key.startsWith('goalChecks_month_') && key.slice(17) < currentMonth) toDelete.push(key);
     }
     toDelete.forEach(k => localStorage.removeItem(k));
+    // checksData（メモリ上）
+    Object.keys(checksData.todoChecks).forEach(k => { if (k.slice(0, 7) < currentMonth) delete checksData.todoChecks[k]; });
+    Object.keys(checksData.goalChecks).forEach(k => {
+      const m = k.startsWith('week_') ? k.slice(5, 12) : k.startsWith('month_') ? k.slice(6) : null;
+      if (m && m < currentMonth) delete checksData.goalChecks[k];
+    });
   }
 
   function init() {
@@ -1170,23 +1179,61 @@
     extra.appendChild(buildWeekSummaryLeft(data));
   }
 
-  function loadTodoChecks(dateStr) {
-    try { return JSON.parse(localStorage.getItem(`todoChecks_${dateStr}`) || '{}'); }
-    catch { return {}; }
+  // ===== CHECK STATE (デバイス間同期) =====
+  let checksData = { todoChecks: {}, goalChecks: {} };
+
+  function loadChecksFromLocal() {
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (key.startsWith('todoChecks_'))
+          checksData.todoChecks[key.slice(11)] = JSON.parse(localStorage.getItem(key) || '{}');
+        else if (key.startsWith('goalChecks_'))
+          checksData.goalChecks[key.slice(11)] = JSON.parse(localStorage.getItem(key) || '{}');
+      }
+    } catch(e) {}
   }
-  function saveTodoCheck(dateStr, text, checked) {
-    const checks = loadTodoChecks(dateStr);
-    checks[text] = checked;
-    localStorage.setItem(`todoChecks_${dateStr}`, JSON.stringify(checks));
+
+  async function loadChecksFromFirestore() {
+    try {
+      const ref = db.collection('users').doc(currentUser.uid).collection('memos');
+      const doc = await ref.doc('checks').get();
+      if (doc.exists) {
+        const parsed = JSON.parse(doc.data().data || '{}');
+        checksData.todoChecks = parsed.todoChecks || {};
+        checksData.goalChecks = parsed.goalChecks || {};
+      }
+    } catch(e) { console.error('checks load error:', e); }
+  }
+
+  async function saveChecks() {
+    if (isFirebaseMode && db && currentUser) {
+      try {
+        const ref = db.collection('users').doc(currentUser.uid).collection('memos');
+        await ref.doc('checks').set({ data: JSON.stringify(checksData) });
+      } catch(e) { console.error('checks save error:', e); }
+    }
+    // localStorageにも常に保存
+    Object.entries(checksData.todoChecks).forEach(([k, v]) => localStorage.setItem(`todoChecks_${k}`, JSON.stringify(v)));
+    Object.entries(checksData.goalChecks).forEach(([k, v]) => localStorage.setItem(`goalChecks_${k}`, JSON.stringify(v)));
+  }
+
+  function loadTodoChecks(dateStr) {
+    return checksData.todoChecks[dateStr] || {};
+  }
+  async function saveTodoCheck(dateStr, text, checked) {
+    if (!checksData.todoChecks[dateStr]) checksData.todoChecks[dateStr] = {};
+    checksData.todoChecks[dateStr][text] = checked;
+    await saveChecks();
   }
   function loadGoalChecks(storageKey) {
-    try { return JSON.parse(localStorage.getItem(`goalChecks_${storageKey}`) || '{}'); }
-    catch { return {}; }
+    return checksData.goalChecks[storageKey] || {};
   }
-  function saveGoalCheck(storageKey, text, checked) {
-    const checks = loadGoalChecks(storageKey);
-    checks[text] = checked;
-    localStorage.setItem(`goalChecks_${storageKey}`, JSON.stringify(checks));
+  async function saveGoalCheck(storageKey, text, checked) {
+    if (!checksData.goalChecks[storageKey]) checksData.goalChecks[storageKey] = {};
+    checksData.goalChecks[storageKey][text] = checked;
+    await saveChecks();
   }
 
   function appendTodoPrevDay(container, data) {
