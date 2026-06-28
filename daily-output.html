@@ -494,7 +494,9 @@
       font-size: 13px; font-family: inherit;
     }
     .habit-form-row input:focus { outline: none; border-color: #3498db; }
-    .habit-entry { border: 1px solid #e8eaed; border-radius: 8px; padding: 10px 60px 10px 28px; margin-bottom: 6px; position: relative; }
+    .habit-entry { border: 1px solid #e8eaed; border-radius: 8px; padding: 10px 84px 10px 28px; margin-bottom: 6px; position: relative; }
+    .habit-entry.paused { opacity: 0.5; }
+    .habit-badge.paused-badge { background: #fdebd0; color: #e67e22; }
     .habit-entry-row { display: flex; flex-direction: column; gap: 4px; }
     .habit-entry-item { display: flex; gap: 6px; align-items: baseline; }
     .habit-entry-cell { font-size: 13px; color: #333; }
@@ -1245,9 +1247,11 @@
     // 今日の曜日に該当する習慣を抽出（配列順 = 優先順位）
     const todayDow = new Date(selectedDate).getDay();
     const habitItems = (memoData.habits || []).filter(h =>
-      !h.schedule || h.schedule === 'daily'
-        ? true
-        : (h.weekdays || []).includes(todayDow)
+      !h.paused && (
+        !h.schedule || h.schedule === 'daily'
+          ? true
+          : (h.weekdays || []).includes(todayDow)
+      )
     );
 
     if (!habitItems.length && !todoLines.length) return;
@@ -1884,6 +1888,15 @@
     renderLeftPanel();
   }
 
+  async function toggleHabitPause(id) {
+    const idx = memoData.habits.findIndex(h => h.id === id);
+    if (idx === -1) return;
+    memoData.habits[idx].paused = !memoData.habits[idx].paused;
+    await saveMemos('habits');
+    renderHabitEntries();
+    renderLeftPanel();
+  }
+
   async function deleteHabitEntry(id) {
     if (!confirm('削除しますか？')) return;
     memoData.habits = memoData.habits.filter(e => e.id !== id);
@@ -1976,7 +1989,7 @@
     const DOW_LABELS = ['日','月','火','水','木','金','土'];
     memoData.habits.forEach((h, idx) => {
       const div = document.createElement('div');
-      div.className = 'habit-entry';
+      div.className = 'habit-entry' + (h.paused ? ' paused' : '');
       div.id = `habit-entry-${h.id}`;
 
       // 優先順位ボタン
@@ -2006,10 +2019,13 @@
         <div class="habit-entry-item"><span class="habit-entry-cell-label">時間</span><span class="habit-entry-cell">${escHtml(h.time||'—')}</span></div>
         <div class="habit-entry-item"><span class="habit-entry-cell-label">習慣内容</span><span class="habit-entry-cell">${escHtml(h.content)}</span></div>
         <div class="habit-entry-item"><span class="habit-entry-cell-label">目的</span><span class="habit-entry-cell">${escHtml(h.purpose||'—')}</span></div>
-        <div class="habit-entry-meta"><span class="habit-badge ${h.schedule==='weekdays'?'weekdays':'daily'}">${escHtml(schedLabel)}</span></div>`;
+        <div class="habit-entry-meta">
+          <span class="habit-badge ${h.schedule==='weekdays'?'weekdays':'daily'}">${escHtml(schedLabel)}</span>
+          ${h.paused ? '<span class="habit-badge paused-badge">一時停止中</span>' : ''}
+        </div>`;
       div.appendChild(row);
 
-      // 削除・編集ボタン
+      // 削除・編集・一時停止ボタン
       const delBtn = document.createElement('button');
       delBtn.className = 'btn-delete-memo'; delBtn.innerHTML = '&#x2715;';
       delBtn.addEventListener('click', () => deleteHabitEntry(h.id));
@@ -2021,6 +2037,14 @@
       editBtn.textContent = '✎'; editBtn.title = '編集';
       editBtn.addEventListener('click', () => editHabitEntry(h.id));
       div.appendChild(editBtn);
+
+      const pauseBtn = document.createElement('button');
+      pauseBtn.className = 'btn-delete-memo';
+      pauseBtn.style.cssText = `right:58px;color:${h.paused ? '#27ae60' : '#e67e22'};`;
+      pauseBtn.textContent = h.paused ? '▶' : '⏸';
+      pauseBtn.title = h.paused ? '再開' : '一時停止';
+      pauseBtn.addEventListener('click', () => toggleHabitPause(h.id));
+      div.appendChild(pauseBtn);
 
       list.appendChild(div);
     });
