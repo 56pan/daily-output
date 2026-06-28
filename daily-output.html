@@ -1521,7 +1521,7 @@
         ${FIELD_DEFS.map(f=>`
           <div class="form-field">
             <label>${escHtml(f.label)}</label>
-            <textarea id="nf_${f.key}" placeholder="${fieldPlaceholder(f.key)}" rows="2"${f.tall?' style="min-height:112px;"':''}></textarea>
+            <textarea id="nf_${f.key}" placeholder="${fieldPlaceholder(f.key)}" rows="2"${f.tall?' style="min-height:168px;"':''}></textarea>
           </div>`).join('')}
         <div class="form-actions">
           <button class="btn btn-secondary" onclick="clearNewForm()">クリア</button>
@@ -1585,7 +1585,7 @@
     const editHtml= categorySelectHTML(`ef_cat_${output.id}`, output.category||'') + FIELD_DEFS.map(f=>`
       <div class="form-field">
         <label>${escHtml(f.label)}</label>
-        <textarea id="ef_${output.id}_${f.key}" rows="2"${f.tall?' style="min-height:112px;"':''}>${escHtml(output[f.key]||'')}</textarea>
+        <textarea id="ef_${output.id}_${f.key}" rows="2"${f.tall?' style="min-height:168px;"':''}>${escHtml(output[f.key]||'')}</textarea>
       </div>`).join('');
     entry.innerHTML=`
       <div class="output-entry-header">
