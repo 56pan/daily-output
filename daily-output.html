@@ -1238,6 +1238,33 @@
     await saveChecks();
   }
 
+  function calcTodoRateForDate(dateStr) {
+    const data = loadData();
+    const checks = loadTodoChecks(dateStr);
+    const dayDow = new Date(dateStr).getDay();
+    const habitItems = (memoData.habits || []).filter(h =>
+      !h.paused && (!h.schedule || h.schedule === 'daily'
+        ? true : (h.weekdays || []).includes(dayDow))
+    );
+    const prev = offsetDate(dateStr, -1);
+    const todoLines = (data[prev]||[]).flatMap(o =>
+      (o.tomorrow_todo||'').split('\n').map(l=>l.trim()).filter(l=>l)
+    );
+    const allKeys = [...habitItems.map(h => `habit:${h.id}`), ...todoLines];
+    return { total: allKeys.length, done: allKeys.filter(k => !!checks[k]).length };
+  }
+
+  function calcTodoRateForRange(startStr, endStr) {
+    const cap = endStr < selectedDate ? endStr : selectedDate;
+    let total = 0, done = 0, d = startStr;
+    while (d <= cap) {
+      const r = calcTodoRateForDate(d);
+      total += r.total; done += r.done;
+      d = offsetDate(d, 1);
+    }
+    return { total, done };
+  }
+
   function appendTodoPrevDay(container, data) {
     const prev = offsetDate(selectedDate, -1);
     const todoLines = (data[prev]||[]).flatMap(o =>
@@ -1261,7 +1288,24 @@
     const title = document.createElement('div');
     title.className = 'left-section-title';
     title.textContent = '今日のToDo';
+
+    // 達成率バッジ（チェック変更時も即時更新）
+    const allKeys = [...habitItems.map(h => `habit:${h.id}`), ...todoLines];
+    const totalCount = allKeys.length;
+    const rateEl = document.createElement('span');
+    rateEl.id = 'todayTodoRate';
+    rateEl.style.cssText = 'font-size:11px;font-weight:600;color:#27ae60;background:#e8f8f5;border-radius:3px;padding:1px 5px;margin-left:4px;';
+    rateEl.textContent = `${allKeys.filter(k => !!checks[k]).length}/${totalCount}`;
+    title.appendChild(rateEl);
     sec.appendChild(title);
+
+    function refreshTodoRate() {
+      const el = document.getElementById('todayTodoRate');
+      if (!el) return;
+      const s = el.closest('.left-section');
+      const cbs = s ? [...s.querySelectorAll('input[type="checkbox"]')] : [];
+      el.textContent = `${cbs.filter(c=>c.checked).length}/${cbs.length}`;
+    }
 
     // 習慣・タスク（優先順位順）
     habitItems.forEach(h => {
@@ -1271,7 +1315,7 @@
       cb.type = 'checkbox';
       const key = `habit:${h.id}`;
       cb.checked = !!checks[key];
-      cb.addEventListener('change', () => saveTodoCheck(selectedDate, key, cb.checked));
+      cb.addEventListener('change', () => { saveTodoCheck(selectedDate, key, cb.checked); refreshTodoRate(); });
       const span = document.createElement('span');
       span.className = 'todo-item-text';
       span.innerHTML = (h.time ? `<span style="color:#aaa;font-size:10px;margin-right:5px;">${escHtml(h.time)}</span>` : '') + escHtml(h.content);
@@ -1297,7 +1341,7 @@
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.checked = !!checks[t];
-        cb.addEventListener('change', () => saveTodoCheck(selectedDate, t, cb.checked));
+        cb.addEventListener('change', () => { saveTodoCheck(selectedDate, t, cb.checked); refreshTodoRate(); });
         const span = document.createElement('span');
         span.className = 'todo-item-text';
         span.innerHTML = linkifyText(t);
@@ -1358,18 +1402,55 @@
     const sel=new Date(selectedDate), dow=(sel.getDay()+6)%7;
     const mon=new Date(sel); mon.setDate(sel.getDate()-dow);
     const sun=new Date(mon); sun.setDate(mon.getDate()+6);
-    const [,mm,md]=formatDate(mon).split('-'), [,sm,sd]=formatDate(sun).split('-');
+    const monStr=formatDate(mon), sunStr=formatDate(sun);
+    const [,mm,md]=monStr.split('-'), [,sm,sd]=sunStr.split('-');
+    const { total, done } = calcTodoRateForRange(monStr, sunStr);
+    const ratePart = total > 0 ? `　${done}/${total}` : '';
     const wrap = document.createElement('div');
-    buildGoalChecklist(wrap, wGoal, `week_${wKey}`, '📆 今週の目標', `${parseInt(mm)}/${parseInt(md)}〜${parseInt(sm)}/${parseInt(sd)}`);
+    buildGoalChecklist(wrap, wGoal, `week_${wKey}`, '📆 今週の目標', `${parseInt(mm)}/${parseInt(md)}〜${parseInt(sm)}/${parseInt(sd)}${ratePart}`);
     return wrap.firstChild;
   }
 
   function buildMonthSummaryLeft(data) {
     const mKey = getMonthKey(selectedDate);
     const mGoal = memoData.monthlyGoals[mKey] || '';
-    const sel=new Date(selectedDate);
+    const sel = new Date(selectedDate);
     const wrap = document.createElement('div');
     buildGoalChecklist(wrap, mGoal, `month_${mKey}`, '📅 今月の目標', `${sel.getFullYear()}年${sel.getMonth()+1}月`);
+
+    const sec = wrap.firstChild;
+    const titleEl = sec.querySelector('.left-section-title');
+    const [y, m] = mKey.split('-').map(Number);
+    const firstOfMonth = `${mKey}-01`;
+    const lastOfMonth = `${mKey}-${String(new Date(y, m, 0).getDate()).padStart(2,'0')}`;
+    const firstMonday = getWeekKey(firstOfMonth);
+    const rateItems = [];
+    let weekNum = 1, monStr = firstMonday;
+
+    while (true) {
+      const sunStr = offsetDate(monStr, 6);
+      const effectiveStart = monStr < firstOfMonth ? firstOfMonth : monStr;
+      const effectiveEnd   = sunStr > lastOfMonth  ? lastOfMonth  : sunStr;
+      if (effectiveStart > lastOfMonth) break;
+      if (effectiveStart > selectedDate) break;
+      const { total, done } = calcTodoRateForRange(effectiveStart, effectiveEnd);
+      if (total > 0) rateItems.push({ week: weekNum, done, total });
+      weekNum++;
+      monStr = offsetDate(monStr, 7);
+    }
+
+    if (rateItems.length) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;padding:3px 0 5px;';
+      rateItems.forEach(({ week, done, total }) => {
+        const badge = document.createElement('span');
+        badge.style.cssText = 'font-size:10px;background:#f0f4f8;border-radius:3px;padding:1px 6px;color:#555;';
+        badge.textContent = `${week}週 ${done}/${total}`;
+        row.appendChild(badge);
+      });
+      titleEl.insertAdjacentElement('afterend', row);
+    }
+
     return wrap.firstChild;
   }
 
