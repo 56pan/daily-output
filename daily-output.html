@@ -691,6 +691,7 @@
       <h3>⭐ ブックマーク</h3>
       <button class="btn-close-modal" onclick="closeBookmarkModal()">&#x2715;</button>
     </div>
+    <div class="learning-filter-row" id="bookmarkFilterRow"></div>
     <div id="bookmarkList"></div>
   </div>
 </div>
@@ -2145,7 +2146,65 @@
     await saveMemos('bookmarks');
     renderLearningList();
   }
+  function renderBookmarkFilterRow() {
+    const row = document.getElementById('bookmarkFilterRow');
+    row.innerHTML = '';
+
+    // 月フィルタ
+    const months = [...new Set(memoData.bookmarks.map(b => b.dateStr.slice(0,7)))].sort().reverse();
+    if (months.length > 0) {
+      const monthRow = document.createElement('div');
+      monthRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:6px;';
+      const lbl = document.createElement('span');
+      lbl.style.cssText = 'font-size:11px;color:#888;';
+      lbl.textContent = '月：';
+      const sel = document.createElement('select');
+      sel.className = 'category-select';
+      sel.style.cssText = 'font-size:12px;padding:2px 6px;';
+      [['__all__','すべて'], ...months.map(m => [m, m.replace('-','年')+'月'])].forEach(([v,t]) => {
+        const opt = document.createElement('option');
+        opt.value = v; opt.textContent = t;
+        if (v === bookmarkMonthFilter) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener('change', () => { bookmarkMonthFilter = sel.value; renderBookmarkList(); });
+      monthRow.appendChild(lbl);
+      monthRow.appendChild(sel);
+      row.appendChild(monthRow);
+    }
+
+    // カテゴリボタン（ブックマーク内に存在するカテゴリのみ）
+    const allData = loadData();
+    const usedCats = new Set(memoData.bookmarks.map(b => {
+      const e = (allData[b.dateStr]||[]).find(o => o.id === b.entryId);
+      return e ? (e.category || '') : '';
+    }));
+    const filters = [
+      { value: '__all__', label: 'すべて', cls: '' },
+      ...CATEGORIES.filter(c => c.value && usedCats.has(c.value)),
+      ...(usedCats.has('') ? [{ value: '__none__', label: 'カテゴリなし', cls: '' }] : []),
+    ];
+    if (filters.length > 1) {
+      const catRow = document.createElement('div');
+      filters.forEach(f => {
+        const btn = document.createElement('button');
+        btn.className = `learning-filter-btn${f.cls?' '+f.cls:''}${bookmarkCatFilter===f.value?' active':''}`;
+        btn.textContent = f.label;
+        btn.addEventListener('click', () => {
+          bookmarkCatFilter = f.value;
+          renderBookmarkFilterRow();
+          renderBookmarkList();
+        });
+        catRow.appendChild(btn);
+      });
+      row.appendChild(catRow);
+    }
+  }
+
   function openBookmarkModal() {
+    bookmarkMonthFilter = '__all__';
+    bookmarkCatFilter   = '__all__';
+    renderBookmarkFilterRow();
     renderBookmarkList();
     document.getElementById('bookmarkModal').style.display = 'flex';
   }
@@ -2167,14 +2226,26 @@
 
   function renderBookmarkList() {
     const list = document.getElementById('bookmarkList');
-    if (!memoData.bookmarks.length) {
-      list.innerHTML = '<div class="empty-message">ブックマークはありません</div>'; return;
+    const allData = loadData();
+
+    const filteredBookmarks = memoData.bookmarks.filter(b => {
+      if (bookmarkMonthFilter !== '__all__' && b.dateStr.slice(0,7) !== bookmarkMonthFilter) return false;
+      if (bookmarkCatFilter !== '__all__') {
+        const e = (allData[b.dateStr]||[]).find(o => o.id === b.entryId);
+        const cat = e ? (e.category || '') : '';
+        if (bookmarkCatFilter === '__none__' && cat !== '') return false;
+        if (bookmarkCatFilter !== '__none__' && cat !== bookmarkCatFilter) return false;
+      }
+      return true;
+    });
+
+    if (!filteredBookmarks.length) {
+      list.innerHTML = `<div class="empty-message">${memoData.bookmarks.length ? '絞り込み結果がありません' : 'ブックマークはありません'}</div>`; return;
     }
     list.innerHTML = '';
-    const allData = loadData();
     // 日付ごとにグループ化
     const byDate = {};
-    memoData.bookmarks.forEach(b => {
+    filteredBookmarks.forEach(b => {
       if (!byDate[b.dateStr]) byDate[b.dateStr] = [];
       byDate[b.dateStr].push(b);
     });
@@ -2343,11 +2414,41 @@
     if (selectedDate === dateStr) renderRightPanel();
   }
 
-  let learningFilter = '__all__';
+  let learningFilter      = '__all__';
+  let learningMonthFilter = '__all__';
+  let bookmarkMonthFilter = '__all__';
+  let bookmarkCatFilter   = '__all__';
 
   function renderLearningFilterRow() {
     const row = document.getElementById('learningFilterRow');
     row.innerHTML = '';
+
+    // 月フィルタ
+    const data = loadData();
+    const months = [...new Set(Object.keys(data).map(d => d.slice(0,7)))].sort().reverse();
+    if (months.length > 0) {
+      const monthRow = document.createElement('div');
+      monthRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:6px;';
+      const lbl = document.createElement('span');
+      lbl.style.cssText = 'font-size:11px;color:#888;';
+      lbl.textContent = '月：';
+      const sel = document.createElement('select');
+      sel.className = 'category-select';
+      sel.style.cssText = 'font-size:12px;padding:2px 6px;';
+      [['__all__','すべて'], ...months.map(m => [m, m.replace('-','年')+'月'])].forEach(([v,t]) => {
+        const opt = document.createElement('option');
+        opt.value = v; opt.textContent = t;
+        if (v === learningMonthFilter) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener('change', () => { learningMonthFilter = sel.value; renderLearningList(); });
+      monthRow.appendChild(lbl);
+      monthRow.appendChild(sel);
+      row.appendChild(monthRow);
+    }
+
+    // カテゴリボタン
+    const catRow = document.createElement('div');
     const filters = [
       { value: '__all__', label: 'すべて', cls: '' },
       ...CATEGORIES.filter(c => c.value),
@@ -2362,12 +2463,14 @@
         renderLearningFilterRow();
         renderLearningList();
       });
-      row.appendChild(btn);
+      catRow.appendChild(btn);
     });
+    row.appendChild(catRow);
   }
 
   function openLearningModal() {
-    learningFilter = '__all__';
+    learningFilter      = '__all__';
+    learningMonthFilter = '__all__';
     renderLearningFilterRow();
     renderLearningList();
     document.getElementById('learningModal').style.display = 'flex';
@@ -2379,12 +2482,17 @@
     const list = document.getElementById('learningList');
     const data = loadData();
     const matchesFilter = o => {
-      if (learningFilter === '__all__') return true;
-      if (learningFilter === '__none__') return !o.category;
-      return o.category === learningFilter;
+      if (learningFilter !== '__all__') {
+        if (learningFilter === '__none__' && o.category) return false;
+        if (learningFilter !== '__none__' && o.category !== learningFilter) return false;
+      }
+      return true;
     };
     const dates = Object.keys(data)
-      .filter(d => (data[d]||[]).some(o => matchesFilter(o) && LEARNING_KEYS.some(k => o[k])))
+      .filter(d => {
+        if (learningMonthFilter !== '__all__' && d.slice(0,7) !== learningMonthFilter) return false;
+        return (data[d]||[]).some(o => matchesFilter(o) && LEARNING_KEYS.some(k => o[k]));
+      })
       .sort().reverse();
     if (dates.length === 0) {
       list.innerHTML = '<div class="empty-message">まだ記録がありません</div>';
