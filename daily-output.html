@@ -1070,6 +1070,8 @@
   let db             = null;
   let currentUser    = null;
   let isFirebaseMode = false;
+  let appInitialized = false;
+  let initializedUid = null;
 
   // ===== UTILITIES =====
   function formatDate(d) {
@@ -1120,12 +1122,20 @@
           const badge = document.getElementById('storageBadge');
           badge.textContent = 'Firebase';
           badge.className = 'storage-badge firebase';
-          loadFirestoreData().then(() => init());
+          // 初回、またはユーザーが変わったときだけデータ読込＋初期化する。
+          // トークン自動更新などによる再発火では再描画しない（入力中の内容を保持）。
+          if (!appInitialized || initializedUid !== user.uid) {
+            initializedUid = user.uid;
+            appInitialized = true;
+            loadFirestoreData().then(() => init());
+          }
         } else {
           // 未ログイン → ログイン画面を表示
           document.getElementById('loginOverlay').style.display = 'flex';
           document.getElementById('userInfo').style.display = 'none';
           localData = {};
+          appInitialized = false;
+          initializedUid = null;
         }
       });
     } else {
@@ -1279,7 +1289,7 @@
         +(dateStr===selectedDate ?' selected':'');
       el.innerHTML = `<span class="day-num">${d}</span>`
         +(withOutput.has(dateStr)?`<span class="output-dot"></span>`:'');
-      el.addEventListener('click', () => selectDate(dateStr));
+      el.addEventListener('click', () => requestSelectDate(dateStr));
       grid.appendChild(el);
     }
     const rem = (firstDow+lastDate)%7===0 ? 0 : 7-((firstDow+lastDate)%7);
@@ -1289,6 +1299,15 @@
       el.innerHTML = `<span class="day-num">${i}</span>`;
       grid.appendChild(el);
     }
+  }
+
+  // カレンダークリック経由の日付切替。入力中は確認してから移動する。
+  function requestSelectDate(dateStr) {
+    if (dateStr === selectedDate) return;
+    if (hasUnsavedInput()) {
+      if (!confirm('入力中の内容があります。保存せずに他の日付へ移動しますか？\n（入力内容は下書きとして残ります）')) return;
+    }
+    selectDate(dateStr);
   }
 
   function selectDate(dateStr) {
@@ -1613,6 +1632,7 @@
     if (!isFirebaseConfigured()) panel.appendChild(buildSetupBanner());
 
     panel.appendChild(buildNewOutputSection());
+    hydrateNewForm();
 
     const dayOutputs = data[selectedDate]||[];
     if (dayOutputs.length>0) panel.appendChild(buildSavedOutputsSection(dayOutputs));
@@ -1696,6 +1716,31 @@
   function clearNewForm() {
     FIELD_DEFS.forEach(f=>{const el=document.getElementById(`nf_${f.key}`);if(el)el.value='';});
     const cat=document.getElementById('nf_category'); if(cat) cat.value='';
+    if(selectedDate) localStorage.removeItem(newDraftKey(selectedDate));
+  }
+
+  // 新規入力フォームの下書き（日付単位でlocalStorageに退避）
+  function newDraftKey(dateStr){ return `newDraft_${dateStr}`; }
+  function saveNewDraft(){
+    if(!selectedDate) return;
+    const d={ category: document.getElementById('nf_category')?.value || '' };
+    let any = !!d.category;
+    FIELD_DEFS.forEach(f=>{ const v=document.getElementById(`nf_${f.key}`)?.value||''; d[f.key]=v; if(v) any=true; });
+    if(any) localStorage.setItem(newDraftKey(selectedDate), JSON.stringify(d));
+    else    localStorage.removeItem(newDraftKey(selectedDate));
+  }
+  function hydrateNewForm(){
+    // 下書き復元
+    try{
+      const raw=localStorage.getItem(newDraftKey(selectedDate));
+      if(raw){ const d=JSON.parse(raw);
+        const cat=document.getElementById('nf_category'); if(cat&&d.category) cat.value=d.category;
+        FIELD_DEFS.forEach(f=>{ const el=document.getElementById(`nf_${f.key}`); if(el&&d[f.key]) el.value=d[f.key]; });
+      }
+    }catch(e){}
+    // 入力のたびに下書き保存
+    const cat=document.getElementById('nf_category'); if(cat) cat.addEventListener('change', saveNewDraft);
+    FIELD_DEFS.forEach(f=>{ const el=document.getElementById(`nf_${f.key}`); if(el) el.addEventListener('input', saveNewDraft); });
   }
 
   async function saveNewOutput() {
@@ -2745,8 +2790,10 @@
   window.addEventListener('resize', ()=>{
     clearTimeout(resizeTimer);
     resizeTimer=setTimeout(()=>{
-      // textareaフォーカス中（Androidキーボード表示中）は再描画しない
-      if(document.activeElement && document.activeElement.tagName==='TEXTAREA') return;
+      // 入力中は再描画しない（フォーカス中の要素、または未保存の入力があるとき）
+      const ae=document.activeElement, tag=ae?ae.tagName:'';
+      if(tag==='TEXTAREA'||tag==='SELECT'||tag==='INPUT') return;
+      if(typeof hasUnsavedInput==='function' && hasUnsavedInput()) return;
       if(selectedDate){renderLeftPanel();renderRightPanel();}
     },150);
   });
