@@ -288,9 +288,17 @@
       text-decoration: line-through; color: var(--text-faint);
     }
     .todo-time {
-      font-size: 10px; color: var(--text-faint); flex-shrink: 0;
-      align-self: center; cursor: pointer; font-variant-numeric: tabular-nums;
+      flex-shrink: 0; align-self: center;
+      min-width: 46px; height: 22px; padding: 0 6px;
+      background: none; border: 1px solid transparent; border-radius: 6px;
+      font-size: 10px; font-family: inherit; color: var(--text-faint);
+      text-align: right; cursor: pointer;
+      font-variant-numeric: tabular-nums; transition: all .18s;
     }
+    .todo-time:hover {
+      background: var(--surface); border-color: var(--line); color: var(--text);
+    }
+    .todo-time:hover::after { content: ' ↺'; }
     .todo-time.running { color: var(--vermilion); font-weight: 700; }
     .btn-todo-timer {
       flex-shrink: 0; align-self: center;
@@ -1483,6 +1491,7 @@
       total += sec;
       const running = !!(a && a.dateStr === selectedDate && a.key === key);
       el.textContent = sec > 0 ? (running ? fmtRunning(sec) : fmtDuration(sec)) : '';
+      el.style.display = sec > 0 ? '' : 'none';   // 0のときは押せる領域ごと消す
       el.classList.toggle('running', running);
     });
     scope.querySelectorAll('[data-tbtn]').forEach(btn => {
@@ -1521,7 +1530,9 @@
 
   // ToDo行にタイマーUIを付与（.todo-item-text の後ろに追加すること）
   function appendTimerUI(label, key) {
-    const timeEl = document.createElement('span');
+    // buttonにすることでクリック領域を確保し、label経由のcheckbox誤トグルも防ぐ
+    const timeEl = document.createElement('button');
+    timeEl.type = 'button';
     timeEl.className = 'todo-time';
     timeEl.dataset.tkey = key;
     timeEl.title = 'クリックで計測時間をリセット';
