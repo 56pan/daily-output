@@ -287,6 +287,22 @@
     .todo-item input[type="checkbox"]:checked + .todo-item-text {
       text-decoration: line-through; color: var(--text-faint);
     }
+    .todo-time {
+      font-size: 10px; color: var(--text-faint); flex-shrink: 0;
+      align-self: center; cursor: pointer; font-variant-numeric: tabular-nums;
+    }
+    .todo-time.running { color: var(--vermilion); font-weight: 700; }
+    .btn-todo-timer {
+      flex-shrink: 0; align-self: center;
+      width: 22px; height: 22px; padding: 0; line-height: 1;
+      background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+      color: var(--text-soft); font-size: 10px; cursor: pointer;
+      font-family: inherit; transition: all .18s;
+    }
+    .btn-todo-timer:hover { border-color: var(--vermilion); color: var(--vermilion); }
+    .btn-todo-timer.running {
+      background: var(--vermilion); border-color: var(--vermilion); color: #fff;
+    }
     .left-summary-date { font-size: 11px; font-weight: 700; color: var(--ink-800); margin: 6px 0 3px; }
     .left-summary-item {
       background: var(--surface); border: 1px solid var(--line-soft); border-left: 3px solid var(--indigo);
@@ -1230,12 +1246,14 @@
       const key = localStorage.key(i);
       if (!key) continue;
       if (key.startsWith('todoChecks_') && key.slice(11, 18) < currentMonth) toDelete.push(key);
+      else if (key.startsWith('todoTimers_') && key.slice(11, 18) < currentMonth) toDelete.push(key);
       else if (key.startsWith('goalChecks_week_') && key.slice(16, 23) < currentMonth) toDelete.push(key);
       else if (key.startsWith('goalChecks_month_') && key.slice(17) < currentMonth) toDelete.push(key);
     }
     toDelete.forEach(k => localStorage.removeItem(k));
     // checksData（メモリ上）
     Object.keys(checksData.todoChecks).forEach(k => { if (k.slice(0, 7) < currentMonth) delete checksData.todoChecks[k]; });
+    Object.keys(checksData.todoTimers).forEach(k => { if (k.slice(0, 7) < currentMonth) delete checksData.todoTimers[k]; });
     Object.keys(checksData.goalChecks).forEach(k => {
       const m = k.startsWith('week_') ? k.slice(5, 12) : k.startsWith('month_') ? k.slice(6) : null;
       if (m && m < currentMonth) delete checksData.goalChecks[k];
@@ -1244,6 +1262,7 @@
 
   function init() {
     cleanupOldChecks();
+    reconcileStaleTimer();
     updateMaximBanner();
     updateEkohikiBanner();
     updateGoalBanner();
@@ -1346,7 +1365,7 @@
   }
 
   // ===== CHECK STATE (デバイス間同期) =====
-  let checksData = { todoChecks: {}, goalChecks: {} };
+  let checksData = { todoChecks: {}, goalChecks: {}, todoTimers: {}, activeTimer: null };
 
   function loadChecksFromLocal() {
     try {
@@ -1357,7 +1376,10 @@
           checksData.todoChecks[key.slice(11)] = JSON.parse(localStorage.getItem(key) || '{}');
         else if (key.startsWith('goalChecks_'))
           checksData.goalChecks[key.slice(11)] = JSON.parse(localStorage.getItem(key) || '{}');
+        else if (key.startsWith('todoTimers_'))
+          checksData.todoTimers[key.slice(11)] = JSON.parse(localStorage.getItem(key) || '{}');
       }
+      checksData.activeTimer = JSON.parse(localStorage.getItem('activeTimer') || 'null');
     } catch(e) {}
   }
 
@@ -1369,6 +1391,8 @@
         const parsed = JSON.parse(doc.data().data || '{}');
         checksData.todoChecks = parsed.todoChecks || {};
         checksData.goalChecks = parsed.goalChecks || {};
+        checksData.todoTimers = parsed.todoTimers || {};
+        checksData.activeTimer = parsed.activeTimer || null;
       }
     } catch(e) { console.error('checks load error:', e); }
   }
@@ -1383,6 +1407,9 @@
     // localStorageにも常に保存
     Object.entries(checksData.todoChecks).forEach(([k, v]) => localStorage.setItem(`todoChecks_${k}`, JSON.stringify(v)));
     Object.entries(checksData.goalChecks).forEach(([k, v]) => localStorage.setItem(`goalChecks_${k}`, JSON.stringify(v)));
+    Object.entries(checksData.todoTimers).forEach(([k, v]) => localStorage.setItem(`todoTimers_${k}`, JSON.stringify(v)));
+    if (checksData.activeTimer) localStorage.setItem('activeTimer', JSON.stringify(checksData.activeTimer));
+    else                        localStorage.removeItem('activeTimer');
   }
 
   function loadTodoChecks(dateStr) {
@@ -1400,6 +1427,125 @@
     if (!checksData.goalChecks[storageKey]) checksData.goalChecks[storageKey] = {};
     checksData.goalChecks[storageKey][text] = checked;
     await saveChecks();
+  }
+
+  // ===== TODO TIMER (同時に走るのは常に1つだけ) =====
+  function timerElapsedSec(dateStr, key) {
+    const base = (checksData.todoTimers[dateStr] || {})[key] || 0;
+    const a = checksData.activeTimer;
+    if (a && a.dateStr === dateStr && a.key === key)
+      return base + Math.max(0, Math.floor((Date.now() - a.startedAt) / 1000));
+    return base;
+  }
+
+  async function stopActiveTimer(save = true) {
+    const a = checksData.activeTimer;
+    if (!a) return;
+    const add = Math.max(0, Math.floor((Date.now() - a.startedAt) / 1000));
+    if (!checksData.todoTimers[a.dateStr]) checksData.todoTimers[a.dateStr] = {};
+    checksData.todoTimers[a.dateStr][a.key] = (checksData.todoTimers[a.dateStr][a.key] || 0) + add;
+    checksData.activeTimer = null;
+    if (save) await saveChecks();
+  }
+
+  async function toggleTimer(dateStr, key) {
+    const a = checksData.activeTimer;
+    if (a && a.dateStr === dateStr && a.key === key) {
+      await stopActiveTimer();          // 同じタスク → 停止
+    } else {
+      await stopActiveTimer(false);     // 別タスク → 前のを記録して切替（保存は1回にまとめる）
+      checksData.activeTimer = { dateStr, key, startedAt: Date.now() };
+      await saveChecks();
+    }
+    refreshTimerUI();
+  }
+
+  function fmtDuration(sec) {   // 停止中の表示
+    if (sec < 60) return `${sec}秒`;
+    const m = Math.floor(sec / 60), h = Math.floor(m / 60);
+    return h > 0 ? `${h}h${String(m % 60).padStart(2,'0')}m` : `${m}分`;
+  }
+  function fmtRunning(sec) {    // 計測中の表示
+    const s = sec % 60, m = Math.floor(sec / 60) % 60, h = Math.floor(sec / 3600);
+    return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+                 : `${m}:${String(s).padStart(2,'0')}`;
+  }
+
+  // 表示のみ更新（再描画は絶対に呼ばない）
+  // root を渡すと未接続のDOMツリーにも適用できる（モバイルは一時divに組んでから移動するため）
+  function refreshTimerUI(root) {
+    const scope = root || document;
+    const a = checksData.activeTimer;
+    let total = 0;
+    scope.querySelectorAll('[data-tkey]').forEach(el => {
+      const key = el.dataset.tkey;
+      const sec = timerElapsedSec(selectedDate, key);
+      total += sec;
+      const running = !!(a && a.dateStr === selectedDate && a.key === key);
+      el.textContent = sec > 0 ? (running ? fmtRunning(sec) : fmtDuration(sec)) : '';
+      el.classList.toggle('running', running);
+    });
+    scope.querySelectorAll('[data-tbtn]').forEach(btn => {
+      const running = !!(a && a.dateStr === selectedDate && a.key === btn.dataset.tbtn);
+      btn.textContent = running ? '■' : '▶';
+      btn.classList.toggle('running', running);
+      btn.title = running ? '計測を停止' : '計測を開始';
+    });
+    const totalEl = scope.querySelector('#todayTodoTotal');
+    if (totalEl) {
+      totalEl.textContent = total > 0 ? fmtDuration(total) : '';
+      totalEl.style.display = total > 0 ? '' : 'none';
+    }
+  }
+
+  let timerTickId = null;
+  function ensureTimerTick() {
+    if (timerTickId) return;
+    timerTickId = setInterval(() => { if (checksData.activeTimer) refreshTimerUI(); }, 1000);
+  }
+
+  // 止め忘れの保険（日跨ぎ / 4時間超）
+  function reconcileStaleTimer() {
+    const a = checksData.activeTimer;
+    if (!a) return;
+    const hours = (Date.now() - a.startedAt) / 3600000;
+    if (a.dateStr === todayStr() && hours < 4) return;
+    const sec = Math.floor((Date.now() - a.startedAt) / 1000);
+    if (confirm(`タイマーが ${fmtDuration(sec)} 動いたままでした。\nこの時間を記録しますか？\n（キャンセルで破棄）`)) {
+      stopActiveTimer();
+    } else {
+      checksData.activeTimer = null;
+      saveChecks();
+    }
+  }
+
+  // ToDo行にタイマーUIを付与（.todo-item-text の後ろに追加すること）
+  function appendTimerUI(label, key) {
+    const timeEl = document.createElement('span');
+    timeEl.className = 'todo-time';
+    timeEl.dataset.tkey = key;
+    timeEl.title = 'クリックで計測時間をリセット';
+    timeEl.addEventListener('click', async e => {
+      e.preventDefault(); e.stopPropagation();
+      if (timerElapsedSec(selectedDate, key) === 0) return;
+      if (!confirm('この項目の計測時間をリセットしますか？')) return;
+      const a = checksData.activeTimer;
+      if (a && a.dateStr === selectedDate && a.key === key) checksData.activeTimer = null;
+      if (checksData.todoTimers[selectedDate]) delete checksData.todoTimers[selectedDate][key];
+      await saveChecks();
+      refreshTimerUI();
+    });
+
+    const btn = document.createElement('button');
+    btn.className = 'btn-todo-timer';
+    btn.dataset.tbtn = key;
+    btn.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();   // labelによるcheckbox誤トグルを防ぐ
+      toggleTimer(selectedDate, key);
+    });
+
+    label.appendChild(timeEl);
+    label.appendChild(btn);
   }
 
   function calcTodoRateForDate(dateStr) {
@@ -1461,6 +1607,12 @@
     rateEl.style.cssText = 'font-size:11px;font-weight:600;color:#27ae60;background:#e8f8f5;border-radius:3px;padding:1px 5px;margin-left:4px;';
     rateEl.textContent = `${allKeys.filter(k => !!checks[k]).length}/${totalCount}`;
     title.appendChild(rateEl);
+
+    // 合計計測時間バッジ
+    const totalEl = document.createElement('span');
+    totalEl.id = 'todayTodoTotal';
+    totalEl.style.cssText = 'font-size:11px;font-weight:600;color:#a1651f;background:#fbf4e4;border-radius:3px;padding:1px 5px;';
+    title.appendChild(totalEl);
     sec.appendChild(title);
 
     function refreshTodoRate() {
@@ -1479,12 +1631,19 @@
       cb.type = 'checkbox';
       const key = `habit:${h.id}`;
       cb.checked = !!checks[key];
-      cb.addEventListener('change', () => { saveTodoCheck(selectedDate, key, cb.checked); refreshTodoRate(); });
+      cb.addEventListener('change', async () => {
+        const a = checksData.activeTimer;
+        if (cb.checked && a && a.dateStr === selectedDate && a.key === key) await stopActiveTimer(false);
+        await saveTodoCheck(selectedDate, key, cb.checked);
+        refreshTodoRate();
+        refreshTimerUI();
+      });
       const span = document.createElement('span');
       span.className = 'todo-item-text';
       span.innerHTML = (h.time ? `<span style="color:#aaa;font-size:10px;margin-right:5px;">${escHtml(h.time)}</span>` : '') + escHtml(h.content);
       label.appendChild(cb);
       label.appendChild(span);
+      appendTimerUI(label, key);
       sec.appendChild(label);
     });
 
@@ -1505,16 +1664,25 @@
         const cb = document.createElement('input');
         cb.type = 'checkbox';
         cb.checked = !!checks[t];
-        cb.addEventListener('change', () => { saveTodoCheck(selectedDate, t, cb.checked); refreshTodoRate(); });
+        cb.addEventListener('change', async () => {
+          const a = checksData.activeTimer;
+          if (cb.checked && a && a.dateStr === selectedDate && a.key === t) await stopActiveTimer(false);
+          await saveTodoCheck(selectedDate, t, cb.checked);
+          refreshTodoRate();
+          refreshTimerUI();
+        });
         const span = document.createElement('span');
         span.className = 'todo-item-text';
         span.innerHTML = linkifyText(t);
         label.appendChild(cb);
         label.appendChild(span);
+        appendTimerUI(label, t);
         sec.appendChild(label);
       });
     }
     container.appendChild(sec);
+    refreshTimerUI(sec);   // secを直接渡す（モバイルは未接続のdivに組むため）
+    ensureTimerTick();
   }
 
   function leftSummaryItem(o, i) {
