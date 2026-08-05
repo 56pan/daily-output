@@ -298,8 +298,29 @@
     .todo-time:hover {
       background: var(--surface); border-color: var(--line); color: var(--text);
     }
-    .todo-time:hover::after { content: ' ↺'; }
+    .todo-time:hover::after { content: ' ✎'; }
+    .todo-time.zero { color: var(--line); }
     .todo-time.running { color: var(--vermilion); font-weight: 700; }
+    /* ===== FOCUS TIMER (15分集中 + 3分休憩) ===== */
+    .focus-timer {
+      margin: 0 16px 12px; padding: 10px 12px;
+      background: var(--surface); border: 1px solid var(--line);
+      border-left: 3px solid var(--text-faint); border-radius: 4px 12px 12px 4px;
+      transition: border-color .2s, background .2s;
+    }
+    .focus-timer.running { border-left-color: var(--vermilion); background: var(--vermilion-soft); }
+    .focus-timer.running.break { border-left-color: var(--green); background: var(--green-soft); }
+    .focus-timer-head { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+    .focus-phase { font-size: 11px; font-weight: 700; color: var(--text-soft); letter-spacing: .5px; }
+    .focus-timer.running .focus-phase { color: var(--vermilion); }
+    .focus-timer.running.break .focus-phase { color: var(--green); }
+    .focus-cycles { font-size: 10px; color: var(--text-faint); }
+    .focus-time {
+      font-size: 26px; font-weight: 700; color: var(--ink-800);
+      font-variant-numeric: tabular-nums; line-height: 1.1; margin-bottom: 8px;
+    }
+    .focus-actions { display: flex; gap: 6px; }
+    .focus-actions .btn { flex: 1; }
     .btn-todo-timer {
       flex-shrink: 0; align-self: center;
       width: 22px; height: 22px; padding: 0; line-height: 1;
@@ -980,6 +1001,28 @@
   </div>
 </div>
 
+<!-- Time Edit Modal -->
+<div class="memo-modal" id="timeEditModal" style="display:none;">
+  <div class="memo-modal-card" style="max-width:400px;">
+    <div class="memo-modal-header">
+      <h3>計測時間の編集</h3>
+      <button class="btn-close-modal" onclick="closeTimeEditModal()">&#x2715;</button>
+    </div>
+    <div id="timeEditTask" style="font-size:13px;color:var(--text);margin-bottom:4px;word-break:break-word;"></div>
+    <div id="timeEditCurrent" style="font-size:11px;color:var(--text-soft);margin-bottom:12px;"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <input type="number" id="timeEditInput" min="0" max="1440" step="1"
+             style="flex:1;border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:14px;font-family:inherit;color:var(--text);background:#fff;">
+      <span style="font-size:13px;color:var(--text-soft);">分</span>
+    </div>
+    <div id="timeEditPresets" style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px;"></div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeTimeEditModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveTimeEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- Login Overlay -->
 <div class="login-overlay" id="loginOverlay" style="display:none;">
   <div class="login-card">
@@ -1036,6 +1079,17 @@
         <button class="cal-nav-btn" id="nextMonth">&#8250;</button>
       </div>
       <div class="calendar-grid" id="calendarGrid"></div>
+    </div>
+    <div class="focus-timer" id="focusTimerBox">
+      <div class="focus-timer-head">
+        <span class="focus-phase" id="focusPhase">待機中</span>
+        <span class="focus-cycles" id="focusCycles"></span>
+      </div>
+      <div class="focus-time" id="focusRemain">15:00</div>
+      <div class="focus-actions">
+        <button class="btn btn-sm btn-primary" id="focusToggleBtn" onclick="toggleFocusTimer()">開始</button>
+        <button class="btn btn-sm btn-secondary" id="focusSkipBtn" onclick="skipFocusPhase()" style="display:none;">スキップ</button>
+      </div>
     </div>
     <div class="memo-buttons-section">
       <button class="btn-memo idea"        onclick="openMemoModal('idea')">アイデアメモ</button>
@@ -1273,6 +1327,9 @@
   function init() {
     cleanupOldChecks();
     reconcileStaleTimer();
+    loadFocusTimer();
+    renderFocusTimer();
+    ensureTimerTick();
     updateMaximBanner();
     updateEkohikiBanner();
     updateGoalBanner();
@@ -1492,8 +1549,9 @@
       const sec = timerElapsedSec(selectedDate, key);
       total += sec;
       const running = !!(a && a.dateStr === selectedDate && a.key === key);
-      el.textContent = sec > 0 ? (running ? fmtRunning(sec) : fmtDuration(sec)) : '';
-      el.style.display = sec > 0 ? '' : 'none';   // 0のときは押せる領域ごと消す
+      el.textContent = sec > 0 ? (running ? fmtRunning(sec) : fmtDuration(sec)) : '–';
+      el.style.display = '';                      // 0でも編集できるよう常に表示
+      el.classList.toggle('zero', sec === 0);
       el.classList.toggle('running', running);
     });
     scope.querySelectorAll('[data-tbtn]').forEach(btn => {
@@ -1512,7 +1570,95 @@
   let timerTickId = null;
   function ensureTimerTick() {
     if (timerTickId) return;
-    timerTickId = setInterval(() => { if (checksData.activeTimer) refreshTimerUI(); }, 1000);
+    timerTickId = setInterval(() => {
+      if (checksData.activeTimer) refreshTimerUI();
+      tickFocusTimer();
+    }, 1000);
+  }
+
+  // ===== FOCUS TIMER (15分集中 + 3分休憩・自動ループ) =====
+  // ToDoタイマーとは独立。checksDataに入れない＝Firestore同期しない（デバイスごとのリズム）
+  const FOCUS_SEC = 15 * 60, BREAK_SEC = 3 * 60;
+  let focusTimer = null;   // { phase:'focus'|'break', startedAt: ms, cycles: n }  null=停止中
+
+  function saveFocusTimer() {
+    if (focusTimer) localStorage.setItem('focusTimer', JSON.stringify(focusTimer));
+    else            localStorage.removeItem('focusTimer');
+  }
+  function loadFocusTimer() {
+    try { focusTimer = JSON.parse(localStorage.getItem('focusTimer') || 'null'); }
+    catch(e) { focusTimer = null; }
+  }
+
+  function focusPhaseDur() { return focusTimer && focusTimer.phase === 'break' ? BREAK_SEC : FOCUS_SEC; }
+  function focusRemainSec() {
+    if (!focusTimer) return FOCUS_SEC;
+    return focusPhaseDur() - Math.floor((Date.now() - focusTimer.startedAt) / 1000);
+  }
+
+  async function toggleFocusTimer() {
+    if (focusTimer) { focusTimer = null; saveFocusTimer(); renderFocusTimer(); return; }
+    await ensureNotifyPermission();
+    focusTimer = { phase: 'focus', startedAt: Date.now(), cycles: 0 };
+    saveFocusTimer(); ensureTimerTick(); renderFocusTimer();
+  }
+
+  function skipFocusPhase() { if (focusTimer) advanceFocusPhase(true); }
+
+  function advanceFocusPhase(skipped) {
+    const wasFocus = focusTimer.phase === 'focus';
+    // 開始時刻を「前フェーズの終了時刻」にしてtickの遅延によるズレを繰り越さない
+    const nextStart = skipped ? Date.now() : focusTimer.startedAt + focusPhaseDur() * 1000;
+    focusTimer = {
+      phase:     wasFocus ? 'break' : 'focus',
+      startedAt: nextStart,
+      cycles:    focusTimer.cycles + (wasFocus ? 1 : 0)
+    };
+    saveFocusTimer();
+    if (!skipped) {
+      notifyFocus(wasFocus ? '集中終了 — 3分休憩' : '休憩終了 — 15分集中',
+                  wasFocus ? `${focusTimer.cycles}セット完了` : 'がんばりましょう');
+    }
+    renderFocusTimer();
+  }
+
+  function tickFocusTimer() {
+    if (!focusTimer) return;
+    const remain = focusRemainSec();
+    if (remain > 0) { renderFocusTimer(); return; }
+    if (-remain > focusPhaseDur()) {      // 1フェーズ分以上超過 = 長時間離席
+      focusTimer = null; saveFocusTimer(); renderFocusTimer();
+      notifyFocus('タイマーを停止しました', '長時間操作がなかったため停止しました');
+      return;
+    }
+    advanceFocusPhase(false);
+  }
+
+  function renderFocusTimer() {
+    const box = document.getElementById('focusTimerBox');
+    if (!box) return;
+    const running = !!focusTimer;
+    const brk = running && focusTimer.phase === 'break';
+    box.classList.toggle('running', running);
+    box.classList.toggle('break', brk);
+    document.getElementById('focusPhase').textContent  = !running ? '待機中' : (brk ? '休憩' : '集中');
+    document.getElementById('focusCycles').textContent = running && focusTimer.cycles > 0 ? `${focusTimer.cycles}セット完了` : '';
+    const sec = running ? Math.max(0, focusRemainSec()) : FOCUS_SEC;
+    document.getElementById('focusRemain').textContent = `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
+    document.getElementById('focusToggleBtn').textContent = running ? '停止' : '開始';
+    document.getElementById('focusSkipBtn').style.display = running ? '' : 'none';
+  }
+
+  // 通知（拒否・非対応でもタイマー自体は動く）
+  async function ensureNotifyPermission() {
+    if (!('Notification' in window)) return false;
+    if (Notification.permission === 'granted') return true;
+    if (Notification.permission === 'denied')  return false;
+    try { return (await Notification.requestPermission()) === 'granted'; } catch(e) { return false; }
+  }
+  function notifyFocus(title, body) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try { new Notification(title, { body, tag: 'focus-timer' }); } catch(e) {}
   }
 
   // 止め忘れの保険（日跨ぎ / 4時間超）
@@ -1530,23 +1676,53 @@
     }
   }
 
+  // ===== 計測時間の編集 =====
+  let timeEditKey = null, timeEditDate = null;
+
+  function openTimeEditModal(dateStr, key, taskLabel) {
+    timeEditDate = dateStr; timeEditKey = key;
+    const sec = timerElapsedSec(dateStr, key);
+    document.getElementById('timeEditTask').textContent = taskLabel;
+    document.getElementById('timeEditCurrent').textContent = `現在の記録：${sec > 0 ? fmtDuration(sec) : 'なし'}`;
+    document.getElementById('timeEditInput').value = Math.round(sec / 60);
+    const pre = document.getElementById('timeEditPresets');
+    pre.innerHTML = '';
+    [5,15,30,45,60,90,120].forEach(m => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'learning-filter-btn';
+      b.textContent = m >= 60 ? `${m/60}時間` : `${m}分`;
+      b.onclick = () => { document.getElementById('timeEditInput').value = m; };
+      pre.appendChild(b);
+    });
+    document.getElementById('timeEditModal').style.display = 'flex';
+  }
+  function closeTimeEditModal() { document.getElementById('timeEditModal').style.display = 'none'; }
+
+  async function saveTimeEdit() {
+    const min = parseInt(document.getElementById('timeEditInput').value, 10);
+    if (isNaN(min) || min < 0) { alert('0以上の数値を入力してください。'); return; }
+    const a = checksData.activeTimer;
+    if (a && a.dateStr === timeEditDate && a.key === timeEditKey) checksData.activeTimer = null;  // 走行中なら破棄
+    if (!checksData.todoTimers[timeEditDate]) checksData.todoTimers[timeEditDate] = {};
+    if (min === 0) delete checksData.todoTimers[timeEditDate][timeEditKey];
+    else           checksData.todoTimers[timeEditDate][timeEditKey] = min * 60;
+    await saveChecks();
+    refreshTimerUI();
+    closeTimeEditModal();
+  }
+
   // ToDo行にタイマーUIを付与（.todo-item-text の後ろに追加すること）
-  function appendTimerUI(label, key) {
+  function appendTimerUI(label, key, taskLabel) {
     // buttonにすることでクリック領域を確保し、label経由のcheckbox誤トグルも防ぐ
     const timeEl = document.createElement('button');
     timeEl.type = 'button';
     timeEl.className = 'todo-time';
     timeEl.dataset.tkey = key;
-    timeEl.title = 'クリックで計測時間をリセット';
-    timeEl.addEventListener('click', async e => {
+    timeEl.title = 'クリックで計測時間を編集';
+    timeEl.addEventListener('click', e => {
       e.preventDefault(); e.stopPropagation();
-      if (timerElapsedSec(selectedDate, key) === 0) return;
-      if (!confirm('この項目の計測時間をリセットしますか？')) return;
-      const a = checksData.activeTimer;
-      if (a && a.dateStr === selectedDate && a.key === key) checksData.activeTimer = null;
-      if (checksData.todoTimers[selectedDate]) delete checksData.todoTimers[selectedDate][key];
-      await saveChecks();
-      refreshTimerUI();
+      openTimeEditModal(selectedDate, key, taskLabel || key);
     });
 
     const btn = document.createElement('button');
@@ -1656,7 +1832,7 @@
       span.innerHTML = (h.time ? `<span style="color:#aaa;font-size:10px;margin-right:5px;">${escHtml(h.time)}</span>` : '') + escHtml(h.content);
       label.appendChild(cb);
       label.appendChild(span);
-      appendTimerUI(label, key);
+      appendTimerUI(label, key, h.content);
       sec.appendChild(label);
     });
 
@@ -1689,7 +1865,7 @@
         span.innerHTML = linkifyText(t);
         label.appendChild(cb);
         label.appendChild(span);
-        appendTimerUI(label, t);
+        appendTimerUI(label, t, t);
         sec.appendChild(label);
       });
     }
