@@ -315,6 +315,12 @@
     .focus-timer.running .focus-phase { color: var(--vermilion); }
     .focus-timer.running.break .focus-phase { color: var(--green); }
     .focus-cycles { font-size: 10px; color: var(--text-faint); }
+    .focus-sound-btn {
+      margin-left: auto; background: none; border: none; cursor: pointer;
+      font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 6px;
+      opacity: .55; transition: opacity .18s;
+    }
+    .focus-sound-btn:hover { opacity: 1; }
     .focus-time {
       font-size: 26px; font-weight: 700; color: var(--ink-800);
       font-variant-numeric: tabular-nums; line-height: 1.1; margin-bottom: 8px;
@@ -1084,7 +1090,9 @@
       <div class="focus-timer-head">
         <span class="focus-phase" id="focusPhase">待機中</span>
         <span class="focus-cycles" id="focusCycles"></span>
+        <button class="focus-sound-btn" id="focusSoundBtn" onclick="toggleFocusSound()" title="通知音のON/OFF">🔊</button>
       </div>
+      <audio id="focusKeepAlive" loop preload="auto"></audio>
       <div class="focus-time" id="focusRemain">15:00</div>
       <div class="focus-actions">
         <button class="btn btn-sm btn-primary" id="focusToggleBtn" onclick="toggleFocusTimer()">開始</button>
@@ -1328,6 +1336,7 @@
     cleanupOldChecks();
     reconcileStaleTimer();
     loadFocusTimer();
+    if (focusTimer) startKeepAlive();   // リロード後も間引き対策を継続（拒否されてもタイマーは動く）
     renderFocusTimer();
     ensureTimerTick();
     updateMaximBanner();
@@ -1597,7 +1606,9 @@
   }
 
   async function toggleFocusTimer() {
-    if (focusTimer) { focusTimer = null; saveFocusTimer(); renderFocusTimer(); return; }
+    if (focusTimer) { focusTimer = null; saveFocusTimer(); stopKeepAlive(); renderFocusTimer(); return; }
+    ensureAudio();          // ユーザー操作起点で作る（以降は裏タブでも鳴らせる）
+    startKeepAlive();
     await ensureNotifyPermission();
     focusTimer = { phase: 'focus', startedAt: Date.now(), cycles: 0 };
     saveFocusTimer(); ensureTimerTick(); renderFocusTimer();
@@ -1616,6 +1627,7 @@
     };
     saveFocusTimer();
     if (!skipped) {
+      beep3(wasFocus ? 880 : 587);   // 集中終了=高め / 休憩終了=低め
       notifyFocus(wasFocus ? '集中終了 — 3分休憩' : '休憩終了 — 15分集中',
                   wasFocus ? `${focusTimer.cycles}セット完了` : 'がんばりましょう');
     }
@@ -1627,7 +1639,7 @@
     const remain = focusRemainSec();
     if (remain > 0) { renderFocusTimer(); return; }
     if (-remain > focusPhaseDur()) {      // 1フェーズ分以上超過 = 長時間離席
-      focusTimer = null; saveFocusTimer(); renderFocusTimer();
+      focusTimer = null; saveFocusTimer(); stopKeepAlive(); renderFocusTimer();
       notifyFocus('タイマーを停止しました', '長時間操作がなかったため停止しました');
       return;
     }
@@ -1647,6 +1659,80 @@
     document.getElementById('focusRemain').textContent = `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
     document.getElementById('focusToggleBtn').textContent = running ? '停止' : '開始';
     document.getElementById('focusSkipBtn').style.display = running ? '' : 'none';
+    const soundBtn = document.getElementById('focusSoundBtn');
+    if (soundBtn) {
+      soundBtn.textContent = focusSoundOn ? '🔊' : '🔇';
+      soundBtn.title = focusSoundOn ? '通知音：ON（クリックでOFF）' : '通知音：OFF（クリックでON）';
+    }
+    // タブを裏にしていてもタイトルで状態が分かるようにする
+    document.title = !running ? '日々のアウトプット'
+      : `${brk ? '休憩' : '集中'} ${document.getElementById('focusRemain').textContent} — 日々のアウトプット`;
+  }
+
+  // ===== 通知音 =====
+  // 裏タブはブラウザにタイマーを間引かれるため、実行中は無音の音声をループ再生して
+  // 「音を再生中のタブ」と判定させ、間引きの対象から外す（無音キープアライブ）
+  let keepAliveUrl = null;
+  function silentWavUrl() {
+    if (keepAliveUrl) return keepAliveUrl;
+    const rate = 8000, n = rate;                  // 8kHz・8bit・1秒
+    const buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    w(0,'RIFF'); v.setUint32(4, 36 + n, true); w(8,'WAVEfmt ');
+    v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+    v.setUint32(24,rate,true); v.setUint32(28,rate,true); v.setUint16(32,1,true); v.setUint16(34,8,true);
+    w(36,'data'); v.setUint32(40,n,true);
+    for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);   // 8bitの無音は128
+    keepAliveUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+    return keepAliveUrl;
+  }
+  function startKeepAlive() {
+    const el = document.getElementById('focusKeepAlive');
+    if (!el) return;
+    if (!el.src) el.src = silentWavUrl();
+    el.volume = 1;               // volume=0にすると無音扱いで間引き対策が効かなくなる
+    el.play().catch(() => {});   // 自動再生を拒否されても致命的ではない
+  }
+  function stopKeepAlive() {
+    const el = document.getElementById('focusKeepAlive');
+    if (el) { el.pause(); try { el.currentTime = 0; } catch(e) {} }
+  }
+
+  let audioCtx = null;
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      try { audioCtx = new AC(); } catch(e) { return null; }
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    return audioCtx;
+  }
+
+  // 3回連続。立ち上がり/減衰をなめらかにしてプチノイズを防ぐ
+  function beep3(freq) {
+    if (!focusSoundOn) return;
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    for (let i = 0; i < 3; i++) {
+      const t = ctx.currentTime + i * 0.18, dur = 0.13;
+      const osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.35, t + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(t); osc.stop(t + dur + 0.03);
+    }
+  }
+
+  let focusSoundOn = localStorage.getItem('focusSoundOn') !== '0';
+  function toggleFocusSound() {
+    focusSoundOn = !focusSoundOn;
+    localStorage.setItem('focusSoundOn', focusSoundOn ? '1' : '0');
+    renderFocusTimer();
+    if (focusSoundOn) beep3(880);   // ONにしたとき音量確認を兼ねて鳴らす
   }
 
   // 通知（拒否・非対応でもタイマー自体は動く）
