@@ -325,6 +325,16 @@
       font-size: 26px; font-weight: 700; color: var(--ink-800);
       font-variant-numeric: tabular-nums; line-height: 1.1; margin-bottom: 8px;
     }
+    .focus-presets { display: flex; gap: 4px; margin-bottom: 8px; }
+    .focus-presets button {
+      flex: 1; padding: 4px 0; font-size: 10px; font-family: inherit;
+      background: var(--paper-2); border: 1px solid var(--line); border-radius: 6px;
+      color: var(--text-soft); cursor: pointer; transition: all .18s;
+    }
+    .focus-presets button:hover { border-color: var(--vermilion); color: var(--vermilion); }
+    .focus-presets button.active {
+      background: var(--ink-800); border-color: var(--ink-800); color: #fff; font-weight: 700;
+    }
     .focus-actions { display: flex; gap: 6px; }
     .focus-actions .btn { flex: 1; }
     .btn-todo-timer {
@@ -1094,6 +1104,12 @@
       </div>
       <audio id="focusKeepAlive" loop preload="auto"></audio>
       <div class="focus-time" id="focusRemain">15:00</div>
+      <div class="focus-presets" id="focusPresets">
+        <button type="button" data-fmin="15" onclick="setFocusMin(15)">15分</button>
+        <button type="button" data-fmin="30" onclick="setFocusMin(30)">30分</button>
+        <button type="button" data-fmin="45" onclick="setFocusMin(45)">45分</button>
+        <button type="button" data-fmin="60" onclick="setFocusMin(60)">60分</button>
+      </div>
       <div class="focus-actions">
         <button class="btn btn-sm btn-primary" id="focusToggleBtn" onclick="toggleFocusTimer()">開始</button>
         <button class="btn btn-sm btn-secondary" id="focusSkipBtn" onclick="skipFocusPhase()" style="display:none;">スキップ</button>
@@ -1336,6 +1352,7 @@
     cleanupOldChecks();
     reconcileStaleTimer();
     loadFocusTimer();
+    catchUpFocusTimer();                // 過ぎた分は音・通知なしで追いつく（or 静かに停止）
     if (focusTimer) startKeepAlive();   // リロード後も間引き対策を継続（拒否されてもタイマーは動く）
     renderFocusTimer();
     ensureTimerTick();
@@ -1585,10 +1602,24 @@
     }, 1000);
   }
 
-  // ===== FOCUS TIMER (15分集中 + 3分休憩・自動ループ) =====
+  // ===== FOCUS TIMER (集中 + 3分休憩・自動ループ) =====
   // ToDoタイマーとは独立。checksDataに入れない＝Firestore同期しない（デバイスごとのリズム）
-  const FOCUS_SEC = 15 * 60, BREAK_SEC = 3 * 60;
-  let focusTimer = null;   // { phase:'focus'|'break', startedAt: ms, cycles: n }  null=停止中
+  const BREAK_SEC = 3 * 60;
+  const FOCUS_OPTIONS = [15, 30, 45, 60];
+  const FOCUS_DEFAULT_SEC = 15 * 60;   // 集中時間が記録されていない古いデータ用
+  let focusMin = parseInt(localStorage.getItem('focusMin') || '15', 10);
+  if (!FOCUS_OPTIONS.includes(focusMin)) focusMin = 15;
+  function focusSec() { return focusMin * 60; }
+
+  // focusSec は開始時の長さを保持する。実行中に設定を変えても走行中のサイクルは変わらない
+  let focusTimer = null;   // { phase:'focus'|'break', startedAt: ms, cycles: n, focusSec: n }  null=停止中
+
+  function setFocusMin(m) {
+    if (!FOCUS_OPTIONS.includes(m)) return;
+    focusMin = m;
+    localStorage.setItem('focusMin', String(m));
+    renderFocusTimer();
+  }
 
   function saveFocusTimer() {
     if (focusTimer) localStorage.setItem('focusTimer', JSON.stringify(focusTimer));
@@ -1599,9 +1630,12 @@
     catch(e) { focusTimer = null; }
   }
 
-  function focusPhaseDur() { return focusTimer && focusTimer.phase === 'break' ? BREAK_SEC : FOCUS_SEC; }
+  function focusPhaseDur() {
+    if (!focusTimer) return focusSec();
+    return focusTimer.phase === 'break' ? BREAK_SEC : (focusTimer.focusSec || FOCUS_DEFAULT_SEC);
+  }
   function focusRemainSec() {
-    if (!focusTimer) return FOCUS_SEC;
+    if (!focusTimer) return focusSec();
     return focusPhaseDur() - Math.floor((Date.now() - focusTimer.startedAt) / 1000);
   }
 
@@ -1610,28 +1644,43 @@
     ensureAudio();          // ユーザー操作起点で作る（以降は裏タブでも鳴らせる）
     startKeepAlive();
     await ensureNotifyPermission();
-    focusTimer = { phase: 'focus', startedAt: Date.now(), cycles: 0 };
+    focusTimer = { phase: 'focus', startedAt: Date.now(), cycles: 0, focusSec: focusSec() };
     saveFocusTimer(); ensureTimerTick(); renderFocusTimer();
   }
 
   function skipFocusPhase() { if (focusTimer) advanceFocusPhase(true); }
 
-  function advanceFocusPhase(skipped) {
+  function advanceFocusPhase(skipped, silent) {
     const wasFocus = focusTimer.phase === 'focus';
     // 開始時刻を「前フェーズの終了時刻」にしてtickの遅延によるズレを繰り越さない
     const nextStart = skipped ? Date.now() : focusTimer.startedAt + focusPhaseDur() * 1000;
     focusTimer = {
       phase:     wasFocus ? 'break' : 'focus',
       startedAt: nextStart,
-      cycles:    focusTimer.cycles + (wasFocus ? 1 : 0)
+      cycles:    focusTimer.cycles + (wasFocus ? 1 : 0),
+      focusSec:  focusTimer.focusSec || FOCUS_DEFAULT_SEC   // 走行中のサイクルは長さを維持
     };
     saveFocusTimer();
-    if (!skipped) {
+    if (!skipped && !silent) {
       beep3(wasFocus ? 880 : 587);   // 集中終了=高め / 休憩終了=低め
       notifyFocus(wasFocus ? '集中終了 — 3分休憩' : '休憩終了 — 15分集中',
                   wasFocus ? `${focusTimer.cycles}セット完了` : 'がんばりましょう');
     }
     renderFocusTimer();
+  }
+
+  // 過ぎた分を音・通知なしでまとめて進める。
+  // ページ読み込み直後や、裏タブで間引かれていた後の「取り戻し」に使う。
+  function catchUpFocusTimer() {
+    if (!focusTimer) return;
+    let hops = 0;
+    while (focusRemainSec() <= 0) {
+      if (hops++ > 200) { focusTimer = null; saveFocusTimer(); stopKeepAlive(); break; }
+      if (-focusRemainSec() > focusPhaseDur()) {   // 大幅超過 = 離席/スリープ → 静かに停止
+        focusTimer = null; saveFocusTimer(); stopKeepAlive(); break;
+      }
+      advanceFocusPhase(false, true);              // silent
+    }
   }
 
   function tickFocusTimer() {
@@ -1643,7 +1692,9 @@
       notifyFocus('タイマーを停止しました', '長時間操作がなかったため停止しました');
       return;
     }
-    advanceFocusPhase(false);
+    advanceFocusPhase(false, false);   // 直近の遷移だけ音を鳴らす
+    catchUpFocusTimer();               // まだ遅れていれば静かに追いつく
+    renderFocusTimer();
   }
 
   function renderFocusTimer() {
@@ -1655,10 +1706,18 @@
     box.classList.toggle('break', brk);
     document.getElementById('focusPhase').textContent  = !running ? '待機中' : (brk ? '休憩' : '集中');
     document.getElementById('focusCycles').textContent = running && focusTimer.cycles > 0 ? `${focusTimer.cycles}セット完了` : '';
-    const sec = running ? Math.max(0, focusRemainSec()) : FOCUS_SEC;
+    const sec = running ? Math.max(0, focusRemainSec()) : focusSec();
     document.getElementById('focusRemain').textContent = `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
     document.getElementById('focusToggleBtn').textContent = running ? '停止' : '開始';
     document.getElementById('focusSkipBtn').style.display = running ? '' : 'none';
+    // 集中時間の選択は待機中のみ（実行中は残り時間が主役）
+    const presets = document.getElementById('focusPresets');
+    if (presets) {
+      presets.style.display = running ? 'none' : 'flex';
+      presets.querySelectorAll('button').forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.fmin, 10) === focusMin);
+      });
+    }
     const soundBtn = document.getElementById('focusSoundBtn');
     if (soundBtn) {
       soundBtn.textContent = focusSoundOn ? '🔊' : '🔇';
