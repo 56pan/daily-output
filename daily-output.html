@@ -680,6 +680,7 @@
     .cat-reading     { background: var(--gold); }
     .cat-action-plan { background: #7d5ba6; }
     .cat-biz         { background: #ad4136; }
+    .cat-challenge60 { background: #d4622a; }
     .cat-daily-review{ background: #2f8f7d; }
     .cat-week-review { background: #3d6fa8; }
     .cat-other       { background: #8a919d; }
@@ -3063,14 +3064,15 @@
   // ===== カテゴリ =====
   const CATEGORIES = [
     { value: '',            label: 'カテゴリなし',         cls: '' },
-    { value: 'news',        label: 'ニュース',             cls: 'cat-news' },
     { value: 'bookclub',    label: '読書部',               cls: 'cat-bookclub' },
+    { value: 'news',        label: 'ニュース',             cls: 'cat-news' },
+    { value: 'challenge60', label: '60日CHALLENGE',        cls: 'cat-challenge60' },
     { value: 'reading',     label: '読書',                 cls: 'cat-reading' },
-    { value: 'action_plan', label: '今月のアクションプラン', cls: 'cat-action-plan' },
-    { value: 'biz',         label: '事業候補生',           cls: 'cat-biz' },
     { value: 'daily_review',label: '1日の振り返り',        cls: 'cat-daily-review' },
     { value: 'week_review', label: '週の振り返り',         cls: 'cat-week-review' },
     { value: 'other',       label: 'その他',               cls: 'cat-other' },
+    { value: 'action_plan', label: '今月のアクションプラン', cls: 'cat-action-plan' },
+    { value: 'biz',         label: '事業候補生',           cls: 'cat-biz' },
   ];
   function categoryInfo(value) {
     return CATEGORIES.find(c => c.value === value) || CATEGORIES[0];
