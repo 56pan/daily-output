@@ -337,6 +337,41 @@
     }
     .focus-actions { display: flex; gap: 6px; }
     .focus-actions .btn { flex: 1; }
+    /* ===== VIDEO BOX (関連動画を見せないYouTube小窓) ===== */
+    .video-box {
+      margin: 0 16px 12px;
+      background: var(--surface); border: 1px solid var(--line);
+      border-left: 3px solid var(--indigo); border-radius: 4px 12px 12px 4px;
+    }
+    .video-box-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; cursor: pointer; user-select: none;
+    }
+    .video-box-title { font-size: 11px; font-weight: 700; color: var(--text-soft); letter-spacing: .5px; }
+    .video-box-arrow { font-size: 11px; color: var(--text-faint); }
+    .video-box-body { padding: 0 10px 10px; }
+    .video-url-row { display: flex; gap: 4px; margin-bottom: 8px; }
+    .video-url-row input {
+      flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 8px;
+      padding: 5px 8px; font-size: 11px; font-family: inherit; color: var(--text); background: #fff;
+    }
+    .video-url-row input:focus { outline: none; border-color: var(--indigo); }
+    .video-frame-wrap {
+      position: relative; width: 100%; aspect-ratio: 16 / 9;
+      border-radius: 8px; overflow: hidden; background: #000;
+    }
+    .video-frame-wrap iframe { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .video-top-guard { position: absolute; top: 0; left: 0; right: 0; height: 20%; }
+    .video-cover {
+      position: absolute; inset: 0; background: var(--ink-900);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; z-index: 2;
+    }
+    .video-cover-btn {
+      background: var(--vermilion); color: #fff; border: none; border-radius: 20px;
+      padding: 8px 18px; font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer;
+    }
+    .video-hint { font-size: 10px; color: var(--vermilion); margin-top: 6px; }
     .btn-todo-timer {
       flex-shrink: 0; align-self: center;
       width: 22px; height: 22px; padding: 0; line-height: 1;
@@ -1116,6 +1151,26 @@
         <button class="btn btn-sm btn-secondary" id="focusSkipBtn" onclick="skipFocusPhase()" style="display:none;">スキップ</button>
       </div>
     </div>
+    <div class="video-box" id="videoBox">
+      <div class="video-box-head" onclick="toggleVideoBox()">
+        <span class="video-box-title">📺 インプット動画</span>
+        <span class="video-box-arrow" id="videoBoxArrow">▸</span>
+      </div>
+      <div class="video-box-body" id="videoBoxBody" style="display:none;">
+        <div class="video-url-row">
+          <input type="text" id="videoUrlInput" placeholder="YouTubeのURLを貼る" spellcheck="false">
+          <button class="btn btn-sm btn-primary" onclick="loadInputVideo()">再生</button>
+        </div>
+        <div class="video-frame-wrap" id="videoFrameWrap" style="display:none;">
+          <div id="videoPlayer"></div>
+          <div class="video-top-guard"></div>
+          <div class="video-cover" id="videoCover" style="display:none;" onclick="resumeInputVideo()">
+            <button class="video-cover-btn" id="videoCoverBtn">▶ 再開</button>
+          </div>
+        </div>
+        <div class="video-hint" id="videoHint" style="display:none;"></div>
+      </div>
+    </div>
     <div class="memo-buttons-section">
       <button class="btn-memo idea"        onclick="openMemoModal('idea')">アイデアメモ</button>
       <button class="btn-memo maxim"       onclick="openMemoModal('maxim')">格言メモ</button>
@@ -1362,6 +1417,9 @@
     updateGoalBanner();
     renderCalendar();
     selectDate(todayStr());
+    if (localStorage.getItem('videoBoxOpen') === '1') toggleVideoBox();
+    const videoInput = document.getElementById('videoUrlInput');
+    if (videoInput) videoInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadInputVideo(); });
   }
 
   // ===== CALENDAR =====
@@ -1727,6 +1785,106 @@
     // タブを裏にしていてもタイトルで状態が分かるようにする
     document.title = !running ? '日々のアウトプット'
       : `${brk ? '休憩' : '集中'} ${document.getElementById('focusRemain').textContent} — 日々のアウトプット`;
+  }
+
+  // ===== インプット動画（関連動画を見せないYouTube小窓） =====
+  let ytPlayer = null, ytApiLoading = false, ytPendingVideo = null;
+
+  function toggleVideoBox() {
+    const body = document.getElementById('videoBoxBody');
+    const open = body.style.display === 'none';
+    body.style.display = open ? '' : 'none';
+    document.getElementById('videoBoxArrow').textContent = open ? '▾' : '▸';
+    localStorage.setItem('videoBoxOpen', open ? '1' : '0');
+    if (open) {
+      const last = localStorage.getItem('videoLastUrl');
+      if (last && !document.getElementById('videoUrlInput').value) {
+        document.getElementById('videoUrlInput').value = last;
+      }
+    }
+  }
+
+  function parseYouTubeId(url) {
+    const m = (url || '').match(
+      /(?:youtube\.com\/(?:watch\?[^#]*v=|shorts\/|live\/|embed\/)|youtu\.be\/)([\w-]{11})/
+    );
+    return m ? m[1] : null;
+  }
+  function parseStartSec(url) {
+    const m = (url || '').match(/[?&#]t=(?:(\d+)h)?(?:(\d+)m)?(\d+)s?/);
+    if (!m) return 0;
+    return (parseInt(m[1]||0,10)*3600) + (parseInt(m[2]||0,10)*60) + parseInt(m[3]||0,10);
+  }
+
+  function loadInputVideo() {
+    const url = document.getElementById('videoUrlInput').value.trim();
+    const id = parseYouTubeId(url);
+    const hint = document.getElementById('videoHint');
+    if (!id) {
+      hint.textContent = 'YouTubeのURLではないようです';
+      hint.style.display = ''; return;
+    }
+    hint.style.display = 'none';
+    localStorage.setItem('videoLastUrl', url);
+    document.getElementById('videoFrameWrap').style.display = '';
+    const start = parseStartSec(url);
+    if (ytPlayer && ytPlayer.loadVideoById) {
+      ytPlayer.loadVideoById({ videoId: id, startSeconds: start });
+      return;
+    }
+    ytPendingVideo = { id, start };
+    ensureYtApi();
+  }
+
+  function ensureYtApi() {
+    if (window.YT && window.YT.Player) { createYtPlayer(); return; }
+    if (ytApiLoading) return;
+    ytApiLoading = true;
+    window.onYouTubeIframeAPIReady = createYtPlayer;
+    const s = document.createElement('script');
+    s.src = 'https://www.youtube.com/iframe_api';
+    s.onerror = () => {
+      ytApiLoading = false;
+      const hint = document.getElementById('videoHint');
+      hint.textContent = 'プレーヤーの読み込みに失敗しました（ネットワークを確認）';
+      hint.style.display = '';
+    };
+    document.head.appendChild(s);
+  }
+
+  function createYtPlayer() {
+    if (!ytPendingVideo || ytPlayer) { if (ytPendingVideo && ytPlayer) loadInputVideo(); return; }
+    ytPlayer = new YT.Player('videoPlayer', {
+      host: 'https://www.youtube-nocookie.com',
+      videoId: ytPendingVideo.id,
+      playerVars: { rel: 0, iv_load_policy: 3, playsinline: 1, start: ytPendingVideo.start || 0 },
+      events: { onStateChange: onYtStateChange }
+    });
+    ytPendingVideo = null;
+  }
+
+  // 一時停止・終了・頭出し状態ではカバーを被せて関連動画を隠す
+  function onYtStateChange(e) {
+    const cover = document.getElementById('videoCover');
+    const btn = document.getElementById('videoCoverBtn');
+    const s = e.data;
+    if (s === YT.PlayerState.ENDED) {
+      btn.textContent = '↺ もう一度見る';
+      cover.dataset.mode = 'ended';
+      cover.style.display = 'flex';
+    } else if (s === YT.PlayerState.PAUSED || s === YT.PlayerState.CUED) {
+      btn.textContent = '▶ 再開';
+      cover.dataset.mode = 'paused';
+      cover.style.display = 'flex';
+    } else {   // PLAYING / BUFFERING
+      cover.style.display = 'none';
+    }
+  }
+
+  function resumeInputVideo() {
+    if (!ytPlayer) return;
+    if (document.getElementById('videoCover').dataset.mode === 'ended') ytPlayer.seekTo(0);
+    ytPlayer.playVideo();
   }
 
   // ===== 通知音 =====
