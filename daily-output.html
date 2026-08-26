@@ -1160,6 +1160,7 @@
         <div class="video-url-row">
           <input type="text" id="videoUrlInput" placeholder="YouTubeのURLを貼る" spellcheck="false">
           <button class="btn btn-sm btn-primary" onclick="loadInputVideo()">再生</button>
+          <button class="btn btn-sm btn-secondary" id="videoCloseBtn" onclick="closeInputVideo()" style="display:none;">終了</button>
         </div>
         <div class="video-frame-wrap" id="videoFrameWrap" style="display:none;">
           <div id="videoPlayer"></div>
@@ -1419,7 +1420,16 @@
     selectDate(todayStr());
     if (localStorage.getItem('videoBoxOpen') === '1') toggleVideoBox();
     const videoInput = document.getElementById('videoUrlInput');
-    if (videoInput) videoInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadInputVideo(); });
+    if (videoInput) {
+      videoInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadInputVideo(); });
+      // URLを消したら動画画面も消す（記憶も削除）
+      videoInput.addEventListener('input', () => {
+        if (videoInput.value.trim() === '') {
+          localStorage.removeItem('videoLastUrl');
+          closeInputVideo();
+        }
+      });
+    }
   }
 
   // ===== CALENDAR =====
@@ -1827,13 +1837,22 @@
     hint.style.display = 'none';
     localStorage.setItem('videoLastUrl', url);
     document.getElementById('videoFrameWrap').style.display = '';
+    document.getElementById('videoCloseBtn').style.display = '';
     const start = parseStartSec(url);
     if (ytPlayer && ytPlayer.loadVideoById) {
       ytPlayer.loadVideoById({ videoId: id, startSeconds: start });
       return;
     }
     ytPendingVideo = { id, start };
+    if (ytPlayer) return;   // 生成中（onReady待ち）→ flushPendingVideoが拾う
     ensureYtApi();
+  }
+
+  function flushPendingVideo() {
+    if (ytPendingVideo && ytPlayer && ytPlayer.loadVideoById) {
+      const p = ytPendingVideo; ytPendingVideo = null;
+      ytPlayer.loadVideoById({ videoId: p.id, startSeconds: p.start || 0 });
+    }
   }
 
   function ensureYtApi() {
@@ -1853,14 +1872,15 @@
   }
 
   function createYtPlayer() {
-    if (!ytPendingVideo || ytPlayer) { if (ytPendingVideo && ytPlayer) loadInputVideo(); return; }
+    if (ytPlayer) { flushPendingVideo(); return; }
+    if (!ytPendingVideo) return;
+    const p = ytPendingVideo; ytPendingVideo = null;
     ytPlayer = new YT.Player('videoPlayer', {
       host: 'https://www.youtube-nocookie.com',
-      videoId: ytPendingVideo.id,
-      playerVars: { rel: 0, iv_load_policy: 3, playsinline: 1, start: ytPendingVideo.start || 0 },
-      events: { onStateChange: onYtStateChange }
+      videoId: p.id,
+      playerVars: { rel: 0, iv_load_policy: 3, playsinline: 1, start: p.start || 0 },
+      events: { onReady: flushPendingVideo, onStateChange: onYtStateChange }
     });
-    ytPendingVideo = null;
   }
 
   // 一時停止・終了・頭出し状態ではカバーを被せて関連動画を隠す
@@ -1885,6 +1905,15 @@
     if (!ytPlayer) return;
     if (document.getElementById('videoCover').dataset.mode === 'ended') ytPlayer.seekTo(0);
     ytPlayer.playVideo();
+  }
+
+  // 再生を止めて動画画面を消す（枠自体は残る）
+  function closeInputVideo() {
+    try { if (ytPlayer && ytPlayer.stopVideo) ytPlayer.stopVideo(); } catch(e) {}
+    document.getElementById('videoFrameWrap').style.display = 'none';
+    document.getElementById('videoCover').style.display = 'none';
+    document.getElementById('videoCloseBtn').style.display = 'none';
+    document.getElementById('videoHint').style.display = 'none';
   }
 
   // ===== 通知音 =====
