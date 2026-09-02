@@ -2648,6 +2648,7 @@
     banner.style.display = 'block';
   }
 
+  let goalDraftKeys = { all: 'goal_all', week: null, month: null };
   function openGoalModal() {
     const base = selectedDate || todayStr();
     const wKey = getWeekKey(base), mKey = getMonthKey(base);
@@ -2658,9 +2659,11 @@
     const [my, mmm] = mKey.split('-');
     document.getElementById('goalWeekLabel').textContent  = `${parseInt(mm)}/${parseInt(md)}〜${parseInt(sm)}/${parseInt(sd)}`;
     document.getElementById('goalMonthLabel').textContent = `${my}年${parseInt(mmm)}月`;
-    document.getElementById('goalInput').value      = memoData.goal || '';
-    document.getElementById('goalWeekInput').value  = memoData.weeklyGoals[wKey]  || '';
-    document.getElementById('goalMonthInput').value = memoData.monthlyGoals[mKey] || '';
+    // 保存済みの値を入れてから、書きかけの下書きがあればそちらを優先する
+    restoreModalDraft('goal_all',           document.getElementById('goalInput'),      memoData.goal || '');
+    restoreModalDraft('goal_week_'  + wKey, document.getElementById('goalWeekInput'),  memoData.weeklyGoals[wKey]  || '');
+    restoreModalDraft('goal_month_' + mKey, document.getElementById('goalMonthInput'), memoData.monthlyGoals[mKey] || '');
+    goalDraftKeys = { all: 'goal_all', week: 'goal_week_' + wKey, month: 'goal_month_' + mKey };
     document.getElementById('goalModal').style.display = 'flex';
   }
 
@@ -2677,6 +2680,7 @@
     if (wVal) memoData.weeklyGoals[wKey]  = wVal; else delete memoData.weeklyGoals[wKey];
     if (mVal) memoData.monthlyGoals[mKey] = mVal; else delete memoData.monthlyGoals[mKey];
     await Promise.all([saveMemos('goal'), saveMemos('weeklyGoals'), saveMemos('monthlyGoals')]);
+    Object.values(goalDraftKeys).forEach(k => { if (k) clearModalDraft(k); });
     updateGoalBanner();
     renderLeftPanel();
     closeGoalModal();
@@ -2703,7 +2707,7 @@
       document.getElementById('memoHabitSection').style.display = 'none';
       const input = document.getElementById('memoInput');
       input.placeholder = placeholders[type];
-      input.value = '';
+      restoreModalDraft('memo_' + type, input);
       renderMemoEntries();
     }
     document.getElementById('memoModal').style.display = 'flex';
@@ -2719,17 +2723,30 @@
     if (tab === 'idea') {
       currentMemoType = 'idea';
       document.getElementById('memoInput').placeholder = 'アイデアを自由に書き留めてください...';
-      document.getElementById('memoInput').value = '';
+      restoreModalDraft('memo_idea', document.getElementById('memoInput'));
       renderMemoEntries();
     } else if (tab === 'ekohiki') {
       currentMemoType = 'ekohiki';
       document.getElementById('memoInput').placeholder = 'えこひいきされる技術を書き留めてください...';
-      document.getElementById('memoInput').value = '';
+      restoreModalDraft('memo_ekohiki', document.getElementById('memoInput'));
       renderMemoEntries();
     } else {
       renderHabitEntries();
     }
   }
+
+  // ===== モーダル入力の下書き（閉じても失わないための保険） =====
+  function saveModalDraft(key, el) {
+    if (!key || !el) return;
+    if (el.value.trim()) localStorage.setItem('draft_' + key, el.value);
+    else                 localStorage.removeItem('draft_' + key);
+  }
+  function restoreModalDraft(key, el, fallback) {
+    if (!el) return;
+    const d = localStorage.getItem('draft_' + key);
+    el.value = (d !== null) ? d : (fallback || '');
+  }
+  function clearModalDraft(key) { localStorage.removeItem('draft_' + key); }
 
   function closeMemoModal() {
     document.getElementById('memoModal').style.display = 'none';
@@ -2741,6 +2758,7 @@
     if (!text) { alert('内容を入力してください。'); return; }
     memoData[currentMemoType].unshift({ id: generateId(), text, createdAt: new Date().toISOString() });
     await saveMemos(currentMemoType);
+    clearModalDraft('memo_' + currentMemoType);
     document.getElementById('memoInput').value = '';
     renderMemoEntries();
     if (currentMemoType === 'maxim') updateMaximBanner();
@@ -3215,7 +3233,7 @@
     document.getElementById('tab-dislike').className = 'ld-tab' + (tab==='dislike' ? ' active-dislike'  : '');
     document.getElementById('ldInput').placeholder   = tab === 'like' ? '好きなことを書き留めてください...' : '嫌いなことを書き留めてください...';
     document.getElementById('ldSaveBtn').style.background = tab === 'like' ? '#e74c3c' : '#3498db';
-    document.getElementById('ldInput').value = '';
+    restoreModalDraft('ld_' + tab, document.getElementById('ldInput'));
     renderLDEntries();
   }
   async function saveLDEntry() {
@@ -3223,6 +3241,7 @@
     if (!text) { alert('内容を入力してください。'); return; }
     memoData[currentLDTab].unshift({ id: generateId(), text, createdAt: new Date().toISOString() });
     await saveMemos(currentLDTab);
+    clearModalDraft('ld_' + currentLDTab);
     document.getElementById('ldInput').value = '';
     renderLDEntries();
   }
@@ -3455,21 +3474,38 @@
     });
   }
 
-  // モーダル外クリックで閉じる
-  document.getElementById('memoModal').addEventListener('click', e => {
-    if (e.target === document.getElementById('memoModal')) closeMemoModal();
+  // モーダル外クリックで閉じる（入力中は確認してから）
+  function bindOverlayClose(modalId, closeFn, inputIds) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+    modal.addEventListener('click', e => {
+      if (e.target !== modal) return;
+      const dirty = (inputIds || []).some(id => {
+        const el = document.getElementById(id);
+        return el && el.value.trim() !== '';
+      });
+      if (dirty && !confirm('入力中の内容があります。閉じますか？\n（内容は下書きとして残ります）')) return;
+      closeFn();
+    });
+  }
+  bindOverlayClose('memoModal',        closeMemoModal,        ['memoInput']);
+  bindOverlayClose('goalModal',        closeGoalModal,        ['goalInput','goalWeekInput','goalMonthInput']);
+  bindOverlayClose('likedislikeModal', closeLikeDislikeModal, ['ldInput']);
+  bindOverlayClose('learningModal',    closeLearningModal,    []);   // 閲覧のみ
+  bindOverlayClose('bookmarkModal',    closeBookmarkModal,    []);   // 閲覧のみ
+
+  // 入力のたびに下書きを保存する
+  document.getElementById('memoInput').addEventListener('input', e => {
+    if (currentMemoType) saveModalDraft('memo_' + currentMemoType, e.target);
   });
-  document.getElementById('goalModal').addEventListener('click', e => {
-    if (e.target === document.getElementById('goalModal')) closeGoalModal();
+  document.getElementById('ldInput').addEventListener('input', e => {
+    if (currentLDTab) saveModalDraft('ld_' + currentLDTab, e.target);
   });
-  document.getElementById('learningModal').addEventListener('click', e => {
-    if (e.target === document.getElementById('learningModal')) closeLearningModal();
-  });
-  document.getElementById('bookmarkModal').addEventListener('click', e => {
-    if (e.target === document.getElementById('bookmarkModal')) closeBookmarkModal();
-  });
-  document.getElementById('likedislikeModal').addEventListener('click', e => {
-    if (e.target === document.getElementById('likedislikeModal')) closeLikeDislikeModal();
+  [['goalInput','all'],['goalWeekInput','week'],['goalMonthInput','month']].forEach(pair => {
+    document.getElementById(pair[0]).addEventListener('input', e => {
+      const k = goalDraftKeys[pair[1]];
+      if (k) saveModalDraft(k, e.target);
+    });
   });
 
   // ===== NAVIGATION =====
