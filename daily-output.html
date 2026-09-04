@@ -718,6 +718,7 @@
     .cat-challenge60 { background: #d4622a; }
     .cat-daily-review{ background: #2f8f7d; }
     .cat-week-review { background: #3d6fa8; }
+    .cat-month-review{ background: #6b5b95; }
     .cat-other       { background: #8a919d; }
     .habit-form-grid { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
     .habit-form-row { display: flex; align-items: center; gap: 8px; }
@@ -1221,6 +1222,53 @@
     { key: 'tomorrow_todo',     label: '⑪ 明日のToDo' },
   ];
 
+  // ===== 振り返りカテゴリ専用の項目セット =====
+  // 内部キーは学び記録と共用（データ構造は変えない）。表示する項目と題名だけ差し替える。
+  // 行動 → 結果 → 原因 → 抽象化 → 次の一手 の流れ。
+  function reviewSet(unit, next) {
+    return [
+      { key:'experience',        label:unit + 'の行動' },
+      { key:'reflection',        label:'できたこと', tall:true },
+      { key:'whywhy',            label:'できなかったこと' },
+      { key:'concrete_abstract', label:'計画の振り返り' },
+      { key:'conceptualization', label:'概念化' },
+      { key:'practice',          label:next + 'への改善' },
+      { key:'tomorrow_todo',     label:next + 'のToDo' },
+    ];
+  }
+  const REVIEW_FIELD_SETS = {
+    daily_review: reviewSet('今日', '明日'),
+    week_review:  reviewSet('今週', '来週'),
+    month_review: reviewSet('今月', '来月'),
+  };
+  function isReviewCategory(cat) { return !!REVIEW_FIELD_SETS[cat]; }
+
+  // そのカテゴリで表示する項目一覧（振り返り以外は従来どおり）
+  function fieldsFor(category) { return REVIEW_FIELD_SETS[category] || FIELD_DEFS; }
+
+  // ラベル解決の単一窓口。short=true で括弧内の説明を落とす
+  function fieldLabel(key, category, opts) {
+    const f = fieldsFor(category).find(x => x.key === key)
+           || FIELD_DEFS.find(x => x.key === key)
+           || { label: key };
+    return (opts && opts.short) ? f.label.replace(/（[^）]*）/g, '').trim() : f.label;
+  }
+
+  // 振り返り用のプレースホルダ（書く中身がぶれないように促す）
+  const REVIEW_PLACEHOLDERS = {
+    experience:        '実際にやったこと（事実）...',
+    reflection:        'できたこと。なぜできたのかまで書くと再現できる...',
+    whywhy:            'できなかったこと。なぜできなかったか...',
+    concrete_abstract: 'そもそも計画は妥当だったか。量・順番・見積りは適切だったか...',
+    conceptualization: 'ここから言える学び・他の場面への応用...',
+    practice:          '次はどうするか（方針）...',
+    tomorrow_todo:     '具体的にやること...',
+  };
+  function placeholderFor(key, category) {
+    if (isReviewCategory(category) && REVIEW_PLACEHOLDERS[key]) return REVIEW_PLACEHOLDERS[key];
+    return fieldPlaceholder(key);
+  }
+
   // --- State ---
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1500,7 +1548,8 @@
     const sec = document.getElementById('unrecordedSection');
     if (!sec || !selectedDate) { if(sec) sec.style.display='none'; return; }
     const data = loadData();
-    const outputs = data[selectedDate] || [];
+    // 振り返りカテゴリは学びの記録とは別物なので、未記録判定には数えない
+    const outputs = (data[selectedDate] || []).filter(o => !isReviewCategory(o.category));
     const recordedKeys = new Set(outputs.flatMap(o => FIELD_DEFS.filter(f=>o[f.key]).map(f=>f.key)));
     const unrecorded = FIELD_DEFS.filter(f => !recordedKeys.has(f.key));
     if (unrecorded.length === 0) { sec.style.display='none'; return; }
@@ -2364,6 +2413,35 @@
   }
 
   // --- New Output Form ---
+  let currentNewCategory = '';
+
+  function newFormFieldsHTML(category) {
+    return fieldsFor(category).map(f=>`
+      <div class="form-field">
+        <label>${escHtml(f.label)}</label>
+        <textarea id="nf_${f.key}" placeholder="${escHtml(placeholderFor(f.key, category))}" rows="2"${f.tall?' style="min-height:168px;"':''}></textarea>
+      </div>`).join('');
+  }
+
+  // カテゴリを変えたら項目を組み替える。書いた内容はキー単位で引き継ぐ
+  function rebuildNewFormFields() {
+    const wrap = document.getElementById('nf_fields');
+    if (!wrap) return;
+    const carry = {};
+    FIELD_DEFS.concat(...Object.values(REVIEW_FIELD_SETS)).forEach(f => {
+      const el = document.getElementById(`nf_${f.key}`);
+      if (el && el.value) carry[f.key] = el.value;
+    });
+    currentNewCategory = document.getElementById('nf_category')?.value || '';
+    wrap.innerHTML = newFormFieldsHTML(currentNewCategory);
+    fieldsFor(currentNewCategory).forEach(f => {
+      const el = document.getElementById(`nf_${f.key}`);
+      if (el && carry[f.key]) el.value = carry[f.key];
+      if (el) el.addEventListener('input', saveNewDraft);
+    });
+    saveNewDraft();
+  }
+
   function buildNewOutputSection() {
     const sec=document.createElement('div');
     sec.className='panel-section';
@@ -2372,12 +2450,8 @@
         <span style="font-size:12px;color:#999;font-weight:400;">${formatDateJP(selectedDate)}</span>
       </div>
       <div class="output-form">
-        ${categorySelectHTML('nf_category')}
-        ${FIELD_DEFS.map(f=>`
-          <div class="form-field">
-            <label>${escHtml(f.label)}</label>
-            <textarea id="nf_${f.key}" placeholder="${fieldPlaceholder(f.key)}" rows="2"${f.tall?' style="min-height:168px;"':''}></textarea>
-          </div>`).join('')}
+        ${categorySelectHTML('nf_category', currentNewCategory)}
+        <div id="nf_fields">${newFormFieldsHTML(currentNewCategory)}</div>
         <div class="form-actions">
           <button class="btn btn-secondary" onclick="clearNewForm()">クリア</button>
           <button class="btn btn-primary" onclick="saveNewOutput()">保存</button>
@@ -2404,7 +2478,7 @@
   }
 
   function clearNewForm() {
-    FIELD_DEFS.forEach(f=>{const el=document.getElementById(`nf_${f.key}`);if(el)el.value='';});
+    allFieldKeys().forEach(k=>{const el=document.getElementById(`nf_${k}`);if(el)el.value='';});
     const cat=document.getElementById('nf_category'); if(cat) cat.value='';
     if(selectedDate) localStorage.removeItem(newDraftKey(selectedDate));
   }
@@ -2415,29 +2489,39 @@
     if(!selectedDate) return;
     const d={ category: document.getElementById('nf_category')?.value || '' };
     let any = !!d.category;
-    FIELD_DEFS.forEach(f=>{ const v=document.getElementById(`nf_${f.key}`)?.value||''; d[f.key]=v; if(v) any=true; });
+    allFieldKeys().forEach(k=>{ const v=document.getElementById(`nf_${k}`)?.value||''; d[k]=v; if(v) any=true; });
     if(any) localStorage.setItem(newDraftKey(selectedDate), JSON.stringify(d));
     else    localStorage.removeItem(newDraftKey(selectedDate));
   }
+  // FIELD_DEFS と全振り返りセットのキーの和集合
+  function allFieldKeys(){
+    const keys = new Set(FIELD_DEFS.map(f=>f.key));
+    Object.values(REVIEW_FIELD_SETS).forEach(set => set.forEach(f => keys.add(f.key)));
+    return [...keys];
+  }
+
   function hydrateNewForm(){
-    // 下書き復元
-    try{
-      const raw=localStorage.getItem(newDraftKey(selectedDate));
-      if(raw){ const d=JSON.parse(raw);
-        const cat=document.getElementById('nf_category'); if(cat&&d.category) cat.value=d.category;
-        FIELD_DEFS.forEach(f=>{ const el=document.getElementById(`nf_${f.key}`); if(el&&d[f.key]) el.value=d[f.key]; });
-      }
-    }catch(e){}
-    // 入力のたびに下書き保存
-    const cat=document.getElementById('nf_category'); if(cat) cat.addEventListener('change', saveNewDraft);
-    FIELD_DEFS.forEach(f=>{ const el=document.getElementById(`nf_${f.key}`); if(el) el.addEventListener('input', saveNewDraft); });
+    // 下書き復元（カテゴリを先に戻してから項目を組み替える）
+    let draft = null;
+    try{ draft = JSON.parse(localStorage.getItem(newDraftKey(selectedDate)) || 'null'); }catch(e){}
+    const cat=document.getElementById('nf_category');
+    if(cat && draft && draft.category){ cat.value = draft.category; currentNewCategory = draft.category; }
+    if(cat && cat.value !== (currentNewCategory||'')) currentNewCategory = cat.value;
+    const wrap = document.getElementById('nf_fields');
+    if (wrap) wrap.innerHTML = newFormFieldsHTML(currentNewCategory);
+    if (draft) fieldsFor(currentNewCategory).forEach(f=>{
+      const el=document.getElementById(`nf_${f.key}`); if(el && draft[f.key]) el.value=draft[f.key];
+    });
+    // 入力のたびに下書き保存 / カテゴリ変更で項目を組み替える
+    if(cat){ cat.addEventListener('change', rebuildNewFormFields); }
+    fieldsFor(currentNewCategory).forEach(f=>{ const el=document.getElementById(`nf_${f.key}`); if(el) el.addEventListener('input', saveNewDraft); });
   }
 
   async function saveNewOutput() {
     const entry={id:generateId(),createdAt:new Date().toISOString()};
     entry.category = document.getElementById('nf_category')?.value || '';
-    FIELD_DEFS.forEach(f=>{entry[f.key]=(document.getElementById(`nf_${f.key}`)?.value||'').trim();});
-    if(!FIELD_DEFS.some(f=>entry[f.key])){alert('少なくとも1つの項目を入力してください。');return;}
+    allFieldKeys().forEach(k=>{const el=document.getElementById(`nf_${k}`); if(el) entry[k]=(el.value||'').trim();});
+    if(!allFieldKeys().some(k=>entry[k])){alert('少なくとも1つの項目を入力してください。');return;}
     const data=loadData();
     await saveDataForDate(selectedDate,[...(data[selectedDate]||[]),entry]);
     clearNewForm();
@@ -2453,20 +2537,38 @@
     return sec;
   }
 
+  function editFormFieldsHTML(output, category) {
+    return fieldsFor(category).map(f=>`
+      <div class="form-field">
+        <label>${escHtml(f.label)}</label>
+        <textarea id="ef_${output.id}_${f.key}" rows="2"${f.tall?' style="min-height:168px;"':''}>${escHtml(output[f.key]||'')}</textarea>
+      </div>`).join('');
+  }
+
+  // 編集中にカテゴリを変えたら項目を組み替える（書いた内容はキー単位で引き継ぐ）
+  function rebuildEditFormFields(id) {
+    const wrap = document.getElementById(`ef_fields_${id}`);
+    if (!wrap) return;
+    const carry = {};
+    allFieldKeys().forEach(k => {
+      const el = document.getElementById(`ef_${id}_${k}`);
+      if (el) carry[k] = el.value;
+    });
+    const cat = document.getElementById(`ef_cat_${id}`)?.value || '';
+    wrap.innerHTML = editFormFieldsHTML({ id, ...carry }, cat);
+  }
+
   function buildOutputEntry(output, num) {
     const entry=document.createElement('div');
     entry.className='output-entry';
     entry.id=`entry_${output.id}`;
     const cat = categoryInfo(output.category||'');
     const badgeHtml = cat.value ? `<span class="category-badge ${cat.cls}">${escHtml(cat.label)}</span>` : '';
-    const viewHtml= badgeHtml + FIELD_DEFS.filter(f=>output[f.key])
+    const viewHtml= badgeHtml + fieldsFor(output.category).filter(f=>output[f.key])
       .map(f=>`<div class="field-item"><span class="field-label">${escHtml(f.label)}</span><span class="field-value">${linkifyText(output[f.key])}</span></div>`)
       .join('');
-    const editHtml= categorySelectHTML(`ef_cat_${output.id}`, output.category||'') + FIELD_DEFS.map(f=>`
-      <div class="form-field">
-        <label>${escHtml(f.label)}</label>
-        <textarea id="ef_${output.id}_${f.key}" rows="2"${f.tall?' style="min-height:168px;"':''}>${escHtml(output[f.key]||'')}</textarea>
-      </div>`).join('');
+    const editHtml= categorySelectHTML(`ef_cat_${output.id}`, output.category||'')
+      + `<div id="ef_fields_${output.id}">${editFormFieldsHTML(output, output.category||'')}</div>`;
     entry.innerHTML=`
       <div class="output-entry-header">
         <span class="entry-num">アウトプット #${num}</span>
@@ -2481,6 +2583,8 @@
       </div>
       <div class="field-view" id="view_${output.id}">${viewHtml||'<span style="color:#ccc;font-size:12px;">（内容なし）</span>'}</div>
       <div class="output-form" id="edit_${output.id}" style="display:none;">${editHtml}</div>`;
+    const catSel = entry.querySelector(`#ef_cat_${output.id}`);
+    if (catSel) catSel.addEventListener('change', () => rebuildEditFormFields(output.id));
     return entry;
   }
 
@@ -2503,7 +2607,7 @@
     const idx=dayData.findIndex(e=>e.id===id);
     if(idx===-1) return;
     dayData[idx].category = document.getElementById(`ef_cat_${id}`)?.value || '';
-    FIELD_DEFS.forEach(f=>{dayData[idx][f.key]=(document.getElementById(`ef_${id}_${f.key}`)?.value||'').trim();});
+    allFieldKeys().forEach(k=>{const el=document.getElementById(`ef_${id}_${k}`); if(el) dayData[idx][k]=(el.value||'').trim();});
     dayData[idx].updatedAt=new Date().toISOString();
     await saveDataForDate(selectedDate, dayData);
     renderLeftPanel(); renderRightPanel();
@@ -2519,7 +2623,7 @@
   function summaryItems(outputs) {
     if(!outputs||!outputs.length) return '';
     return outputs.map((o,i)=>{
-      const rows=FIELD_DEFS.filter(f=>o[f.key])
+      const rows=fieldsFor(o.category).filter(f=>o[f.key])
         .map(f=>`<div class="s-row"><span class="s-label">${escHtml(f.label)}：</span>${linkifyText(trunc(o[f.key],60))}</div>`)
         .join('');
       return `<div class="summary-item"><strong>#${i+1}</strong>${rows}</div>`;
@@ -3108,18 +3212,10 @@
   function closeBookmarkModal() {
     document.getElementById('bookmarkModal').style.display = 'none';
   }
-  // ②～⑧のキーとラベル（③は主カードで表示済みのため補足表示対象）
-  const BOOKMARK_SUB_FIELDS = [
-    { key: 'experience',        label: '① 経験' },
-    { key: 'reflection',        label: '② 振り返り' },
-    { key: 'practice',          label: '④ 実践' },
-    { key: 'concrete_abstract', label: '⑤ 具体→抽象→具体' },
-    { key: 'whywhy',            label: '⑥ なぜなぜ分析' },
-    { key: 'tgt',               label: '⑦ TGT' },
-    { key: 'flexible_mind',     label: '⑧ しなやかマインド' },
-    { key: 'habit_review',      label: '⑨ 習慣の振り返り' },
-    { key: 'emotion',           label: '⑩ 感情の振り返り' },
-  ];
+  // 主カード（③概念化）以外の項目を補足表示する。カテゴリに応じた題名で出す
+  function bookmarkSubFields(category) {
+    return fieldsFor(category).filter(f => f.key !== 'conceptualization' && f.key !== 'tomorrow_todo');
+  }
 
   function renderBookmarkList() {
     const list = document.getElementById('bookmarkList');
@@ -3175,7 +3271,7 @@
         }
         const labelDiv = document.createElement('div');
         labelDiv.className = 'learning-entry-label';
-        labelDiv.textContent = b.label;
+        labelDiv.textContent = entry ? fieldLabel(b.fieldKey, entry.category) : (b.label || '');
         const textDiv = document.createElement('div');
         textDiv.className = 'learning-entry-text';
         textDiv.innerHTML = linkifyText(b.text);
@@ -3191,7 +3287,7 @@
 
         // ②④～⑧の補足フィールドを表示
         if (entry) {
-          BOOKMARK_SUB_FIELDS.forEach(({ key, label }) => {
+          bookmarkSubFields(entry.category).forEach(({ key, label }) => {
             if (!entry[key]) return;
             const subItem = document.createElement('div');
             subItem.className = 'learning-entry bookmark-sub-field';
@@ -3276,6 +3372,7 @@
     { value: 'reading',     label: '読書',                 cls: 'cat-reading' },
     { value: 'daily_review',label: '1日の振り返り',        cls: 'cat-daily-review' },
     { value: 'week_review', label: '週の振り返り',         cls: 'cat-week-review' },
+    { value: 'month_review',label: '月の振り返り',         cls: 'cat-month-review' },
     { value: 'other',       label: 'その他',               cls: 'cat-other' },
     { value: 'action_plan', label: '今月のアクションプラン', cls: 'cat-action-plan' },
     { value: 'biz',         label: '事業候補生',           cls: 'cat-biz' },
@@ -3295,7 +3392,8 @@
 
   // ===== 学びの一覧 =====
   const LEARNING_KEYS = ['conceptualization', 'experience', 'reflection', 'practice', 'concrete_abstract', 'whywhy'];
-  const LEARNING_LABELS = {
+  // 表示ラベルは fieldLabel() に一本化（カテゴリで題名が変わるため）
+  const LEARNING_LABEL_SHORT = {
     experience:        '① 経験',
     reflection:        '② 振り返り',
     conceptualization: '③ 概念化',
@@ -3303,6 +3401,10 @@
     concrete_abstract: '⑤ 具体→抽象→具体',
     whywhy:            '⑥ なぜなぜ分析',
   };
+  function learningLabel(key, category) {
+    if (isReviewCategory(category)) return fieldLabel(key, category);
+    return LEARNING_LABEL_SHORT[key] || fieldLabel(key, category, { short:true });
+  }
 
   async function saveCategoryForEntry(dateStr, entryId, newCategory) {
     const data = loadData();
@@ -3450,7 +3552,7 @@
           item.style.position = 'relative';
           const labelDiv = document.createElement('div');
           labelDiv.className = 'learning-entry-label';
-          labelDiv.textContent = LEARNING_LABELS[key];
+          labelDiv.textContent = learningLabel(key, o.category);
           const textDiv = document.createElement('div');
           textDiv.className = 'learning-entry-text';
           textDiv.innerHTML = linkifyText(o[key]);
@@ -3463,7 +3565,7 @@
             bmBtn.textContent = bookmarked ? '⭐' : '☆';
             bmBtn.title = bookmarked ? 'ブックマーク解除' : 'ブックマークに追加';
             bmBtn.addEventListener('click', () => {
-              toggleBookmark(o.id, key, dateStr, LEARNING_LABELS[key], o[key]);
+              toggleBookmark(o.id, key, dateStr, learningLabel(key, o.category), o[key]);
             });
             item.appendChild(bmBtn);
           }
@@ -3529,8 +3631,8 @@
 
   // ===== RELOAD WARNING =====
   function hasUnsavedInput() {
-    return FIELD_DEFS.some(f => {
-      const el = document.getElementById(`nf_${f.key}`);
+    return allFieldKeys().some(k => {
+      const el = document.getElementById(`nf_${k}`);
       return el && el.value.trim() !== '';
     });
   }
