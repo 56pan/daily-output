@@ -1852,12 +1852,6 @@
     body.style.display = open ? '' : 'none';
     document.getElementById('videoBoxArrow').textContent = open ? '▾' : '▸';
     localStorage.setItem('videoBoxOpen', open ? '1' : '0');
-    if (open) {
-      const last = localStorage.getItem('videoLastUrl');
-      if (last && !document.getElementById('videoUrlInput').value) {
-        document.getElementById('videoUrlInput').value = last;
-      }
-    }
   }
 
   function parseYouTubeId(url) {
@@ -1881,7 +1875,6 @@
       hint.style.display = ''; return;
     }
     hint.style.display = 'none';
-    localStorage.setItem('videoLastUrl', url);
     document.getElementById('videoFrameWrap').style.display = '';
     document.getElementById('videoCloseBtn').style.display = '';
     const start = parseStartSec(url);
@@ -2454,7 +2447,7 @@
         <div id="nf_fields">${newFormFieldsHTML(currentNewCategory)}</div>
         <div class="form-actions">
           <button class="btn btn-secondary" onclick="clearNewForm()">クリア</button>
-          <button class="btn btn-primary" onclick="saveNewOutput()">保存</button>
+          <button class="btn btn-primary" onclick="saveNewOutput()" title="Ctrl+Enterでも保存できます">保存</button>
         </div>
       </div>`;
     return sec;
@@ -2480,7 +2473,13 @@
   function clearNewForm() {
     allFieldKeys().forEach(k=>{const el=document.getElementById(`nf_${k}`);if(el)el.value='';});
     const cat=document.getElementById('nf_category'); if(cat) cat.value='';
+    currentNewCategory = '';   // 再描画時に古いカテゴリが復元されるのを防ぐ
     if(selectedDate) localStorage.removeItem(newDraftKey(selectedDate));
+    // 「クリア」ボタン経由でも項目を通常セットへ戻す
+    // （saveNewOutput 経由では直後に全体再描画されるので、ここでの組み替えは無害）
+    const wrap = document.getElementById('nf_fields');
+    if (wrap) wrap.innerHTML = newFormFieldsHTML('');
+    fieldsFor('').forEach(f=>{ const el=document.getElementById(`nf_${f.key}`); if(el) el.addEventListener('input', saveNewDraft); });
   }
 
   // 新規入力フォームの下書き（日付単位でlocalStorageに退避）
@@ -3595,6 +3594,30 @@
   bindOverlayClose('likedislikeModal', closeLikeDislikeModal, ['ldInput']);
   bindOverlayClose('learningModal',    closeLearningModal,    []);   // 閲覧のみ
   bindOverlayClose('bookmarkModal',    closeBookmarkModal,    []);   // 閲覧のみ
+
+  // Ctrl+Enter（Macは Cmd+Enter）で、いま入力している場所に応じて保存する
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
+    const el = e.target;
+    if (!el || !/^(TEXTAREA|SELECT|INPUT)$/.test(el.tagName)) return;
+    const id = el.id || '';
+    const isOpen = m => { const x = document.getElementById(m); return x && x.style.display === 'flex'; };
+
+    // モーダル内の入力欄はモーダルの保存へ
+    if (isOpen('memoModal')        && id === 'memoInput') { e.preventDefault(); saveMemoEntry(); return; }
+    if (isOpen('likedislikeModal') && id === 'ldInput')   { e.preventDefault(); saveLDEntry();   return; }
+    if (isOpen('goalModal') && /^goal(Input|WeekInput|MonthInput)$/.test(id)) { e.preventDefault(); saveGoal(); return; }
+
+    // 新規アウトプットフォーム
+    if (id.startsWith('nf_')) { e.preventDefault(); saveNewOutput(); return; }
+
+    // 編集フォーム: ef_cat_<entryId> / ef_<entryId>_<key>
+    if (id.startsWith('ef_cat_')) { e.preventDefault(); saveEdit(id.slice(7)); return; }
+    if (id.startsWith('ef_')) {
+      const sep = id.indexOf('_', 3);
+      if (sep > 3) { e.preventDefault(); saveEdit(id.slice(3, sep)); }
+    }
+  });
 
   // 入力のたびに下書きを保存する
   document.getElementById('memoInput').addEventListener('input', e => {
