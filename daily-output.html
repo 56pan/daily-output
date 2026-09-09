@@ -524,6 +524,14 @@
       transition: all .18s;
     }
     .btn-close-modal:hover { color: var(--text); background: var(--line-soft); }
+    /* 全データのJSON書き出し（使用頻度が低いので控えめに） */
+    .btn-export-data {
+      background: none; border: 1px solid var(--line-soft); cursor: pointer;
+      font-size: 11px; color: var(--text-faint); padding: 3px 8px;
+      border-radius: 8px; white-space: nowrap;
+      transition: all .18s;
+    }
+    .btn-export-data:hover { color: var(--text); border-color: var(--text-faint); }
 
     /* 罫線付きテキストエリア */
     .lined-textarea {
@@ -965,7 +973,10 @@
   <div class="memo-modal-card">
     <div class="memo-modal-header">
       <h3>学びの一覧</h3>
-      <button class="btn-close-modal" onclick="closeLearningModal()">&#x2715;</button>
+      <div style="display:flex; align-items:center; gap:4px;">
+        <button class="btn-export-data" onclick="exportAllData()" title="全データをJSONファイルで保存します">&#x2b07; エクスポート</button>
+        <button class="btn-close-modal" onclick="closeLearningModal()">&#x2715;</button>
+      </div>
     </div>
     <div class="learning-filter-row" id="learningFilterRow"></div>
     <div id="learningList"></div>
@@ -3479,6 +3490,25 @@
   }
   function closeLearningModal() {
     document.getElementById('learningModal').style.display = 'none';
+  }
+
+  // 全データ（アウトプット・各種メモ・チェック／タイマー）をJSONで書き出す
+  function exportAllData() {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      outputs: loadData(),
+      memos:   memoData,
+      checks:  checksData,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `daily-output-export-${todayStr()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   function renderLearningList() {
     const list = document.getElementById('learningList');
