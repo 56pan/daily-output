@@ -721,7 +721,8 @@
     .cat-news        { background: var(--indigo); }
     .cat-bookclub    { background: var(--green); }
     .cat-reading     { background: var(--gold); }
-    .cat-action-plan { background: #7d5ba6; }
+    .cat-esl         { background: #b5476f; }
+    .cat-english     { background: #8a5a44; }
     .cat-biz         { background: #ad4136; }
     .cat-challenge60 { background: #d4622a; }
     .cat-daily-review{ background: #2f8f7d; }
@@ -1465,6 +1466,7 @@
   }
 
   function init() {
+    migrateMergedCategories();
     cleanupOldChecks();
     reconcileStaleTimer();
     loadFocusTimer();
@@ -3379,19 +3381,31 @@
     { value: 'bookclub',    label: '読書部',               cls: 'cat-bookclub' },
     { value: 'news',        label: 'ニュース',             cls: 'cat-news' },
     { value: 'challenge60', label: '60日CHALLENGE',        cls: 'cat-challenge60' },
+    { value: 'esl',         label: 'ESL',                  cls: 'cat-esl' },
+    { value: 'english',     label: '英語',                 cls: 'cat-english' },
     { value: 'reading',     label: '読書',                 cls: 'cat-reading' },
     { value: 'daily_review',label: '1日の振り返り',        cls: 'cat-daily-review' },
     { value: 'week_review', label: '週の振り返り',         cls: 'cat-week-review' },
     { value: 'month_review',label: '月の振り返り',         cls: 'cat-month-review' },
     { value: 'other',       label: 'その他',               cls: 'cat-other' },
-    { value: 'action_plan', label: '今月のアクションプラン', cls: 'cat-action-plan' },
-    { value: 'biz',         label: '事業候補生',           cls: 'cat-biz' },
+    // 使わなくなったカテゴリ：記録の表示・絞り込み・編集では残し、新規の選択肢には出さない
+    { value: 'biz',         label: '事業候補生',           cls: 'cat-biz', hidden: true },
   ];
+  // 廃止したカテゴリの記録を統合先へ移す（対象が無ければ何もしない）
+  const CATEGORY_MERGES = { action_plan: 'esl' };
+  function migrateMergedCategories() {
+    const data = loadData();
+    Object.entries(data).forEach(([dateStr, entries]) => {
+      if (!entries.some(e => CATEGORY_MERGES[e.category])) return;
+      const next = entries.map(e => CATEGORY_MERGES[e.category] ? { ...e, category: CATEGORY_MERGES[e.category] } : e);
+      saveDataForDate(dateStr, next);   // localData は同期的に更新される
+    });
+  }
   function categoryInfo(value) {
     return CATEGORIES.find(c => c.value === value) || CATEGORIES[0];
   }
   function categorySelectHTML(id, selected='') {
-    const opts = CATEGORIES.map(c =>
+    const opts = CATEGORIES.filter(c => !c.hidden || c.value === selected).map(c =>
       `<option value="${c.value}"${c.value===selected?' selected':''}>${c.label}</option>`
     ).join('');
     return `<div class="category-select-wrap">
@@ -3550,6 +3564,7 @@
         const catSelect = document.createElement('select');
         catSelect.className = 'category-select learning-cat-select';
         CATEGORIES.forEach(c => {
+          if (c.hidden && c.value !== (o.category || '')) return;
           const opt = document.createElement('option');
           opt.value = c.value;
           opt.textContent = c.label;
