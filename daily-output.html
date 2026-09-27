@@ -433,9 +433,9 @@
     .btn-bookmark.bookmarked { background: var(--gold-soft); border-color: var(--gold); }
 
     /* ===== LIKE/DISLIKE TABS ===== */
-    .ld-tabs { display: flex; gap: 0; margin-bottom: 14px; border-bottom: 2px solid var(--line-soft); }
+    .ld-tabs { display: flex; gap: 0; margin-bottom: 14px; border-bottom: 2px solid var(--line-soft); overflow-x: auto; }
     .ld-tab {
-      padding: 8px 20px; font-size: 13px; font-weight: 700;
+      padding: 8px 12px; font-size: 13px; font-weight: 700; white-space: nowrap; flex-shrink: 0;
       cursor: pointer; border: none; background: none;
       font-family: inherit;
       color: var(--text-faint); border-bottom: 3px solid transparent; margin-bottom: -2px;
@@ -570,6 +570,10 @@
     .memo-entry:hover { border-color: var(--line); box-shadow: 0 3px 12px rgba(20,26,34,.06); }
     .memo-entry-date { font-size: 11px; color: var(--text-faint); margin-bottom: 4px; }
     .memo-entry-text { font-size: 13px; color: var(--text); white-space: pre-wrap; line-height: 1.65; word-break: break-word; }
+    .memo-entry-reason { font-size: 12px; color: var(--text-soft); white-space: pre-wrap; line-height: 1.6; margin-top: 4px; word-break: break-word; }
+    .memo-rule-edit-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+    .memo-rule-edit-row label { font-size: 11px; color: var(--text-soft); font-weight: 700; width: 56px; flex-shrink: 0; }
+    .memo-rule-edit-row input { flex: 1; border: 1.5px solid var(--line); border-radius: 9px; padding: 5px 9px; font-size: 13px; font-family: inherit; color: var(--text); }
 
     /* ===== LEARNING MODAL ===== */
     .learning-date-header {
@@ -1022,10 +1026,16 @@
       <button class="ld-tab" id="tab-idea-memo"    onclick="switchIdeaTab('idea')">💡 アイデアメモ</button>
       <button class="ld-tab" id="tab-ekohiki-memo" onclick="switchIdeaTab('ekohiki')">📖 えこひいき</button>
       <button class="ld-tab" id="tab-habit-memo"   onclick="switchIdeaTab('habit')">📋 習慣・タスク</button>
+      <button class="ld-tab" id="tab-rules-memo"   onclick="switchIdeaTab('rules')">📌 自分の決めごと</button>
     </div>
     <!-- アイデア入力エリア -->
     <div id="memoIdeaSection">
       <textarea class="lined-textarea" id="memoInput" placeholder=""></textarea>
+      <!-- 自分の決めごと用の追加欄 -->
+      <div id="memoRuleFields" class="habit-form-grid" style="display:none;margin-top:8px;">
+        <div class="habit-form-row"><label>決めた日</label><input type="date" id="memoRuleDate"></div>
+        <div class="habit-form-row"><label>理由</label><input type="text" id="memoRuleReason" placeholder="なぜそう決めたか（任意）"></div>
+      </div>
       <div class="form-actions" style="margin-top:10px;">
         <button class="btn btn-secondary" onclick="closeMemoModal()">キャンセル</button>
         <button class="btn btn-primary" onclick="saveMemoEntry()">保存</button>
@@ -2661,7 +2671,7 @@
 
 
   // ===== MEMO DATA =====
-  let memoData = { idea: [], maxim: [], ekohiki: [], goal: '', weeklyGoals: {}, monthlyGoals: {}, bookmarks: [], like: [], dislike: [], habits: [] };
+  let memoData = { idea: [], maxim: [], ekohiki: [], rules: [], goal: '', weeklyGoals: {}, monthlyGoals: {}, bookmarks: [], like: [], dislike: [], habits: [] };
 
   function getWeekKey(dateStr) {
     const d = new Date(dateStr), dow = (d.getDay()+6)%7;
@@ -2685,16 +2695,18 @@
       memoData.like         = JSON.parse(localStorage.getItem('likeMemos')    || '[]');
       memoData.dislike      = JSON.parse(localStorage.getItem('dislikeMemos') || '[]');
       memoData.habits       = JSON.parse(localStorage.getItem('habitMemos')   || '[]');
-    } catch { memoData = { idea: [], maxim: [], ekohiki: [], goal: '', weeklyGoals: {}, monthlyGoals: {}, bookmarks: [], like: [], dislike: [], habits: [] }; }
+      memoData.rules        = JSON.parse(localStorage.getItem('ruleMemos')    || '[]');
+    } catch { memoData = { idea: [], maxim: [], ekohiki: [], rules: [], goal: '', weeklyGoals: {}, monthlyGoals: {}, bookmarks: [], like: [], dislike: [], habits: [] }; }
   }
 
   async function loadMemosFromFirestore() {
     try {
       const ref = db.collection('users').doc(currentUser.uid).collection('memos');
-      const [ideaDoc, maximDoc, ekohikiDoc, goalDoc, weekDoc, monthDoc, bmDoc, likeDoc, dislikeDoc, habitsDoc] = await Promise.all([
+      const [ideaDoc, maximDoc, ekohikiDoc, goalDoc, weekDoc, monthDoc, bmDoc, likeDoc, dislikeDoc, habitsDoc, rulesDoc] = await Promise.all([
         ref.doc('idea').get(), ref.doc('maxim').get(), ref.doc('ekohiki').get(), ref.doc('goal').get(),
         ref.doc('weeklyGoals').get(), ref.doc('monthlyGoals').get(),
-        ref.doc('bookmarks').get(), ref.doc('like').get(), ref.doc('dislike').get(), ref.doc('habits').get()
+        ref.doc('bookmarks').get(), ref.doc('like').get(), ref.doc('dislike').get(), ref.doc('habits').get(),
+        ref.doc('rules').get()
       ]);
       memoData.idea         = ideaDoc.exists      ? ideaDoc.data().entries      || [] : [];
       memoData.maxim        = maximDoc.exists     ? maximDoc.data().entries     || [] : [];
@@ -2706,6 +2718,7 @@
       memoData.like         = likeDoc.exists      ? likeDoc.data().entries      || [] : [];
       memoData.dislike      = dislikeDoc.exists   ? dislikeDoc.data().entries   || [] : [];
       memoData.habits       = habitsDoc.exists    ? habitsDoc.data().entries    || [] : [];
+      memoData.rules        = rulesDoc.exists     ? rulesDoc.data().entries     || [] : [];
     } catch(e) { console.error('Memo load error:', e); }
   }
 
@@ -2727,6 +2740,7 @@
       else if (type === 'dislike')   localStorage.setItem('dislikeMemos', JSON.stringify(memoData.dislike));
       else if (type === 'habits')    localStorage.setItem('habitMemos',   JSON.stringify(memoData.habits));
       else if (type === 'ekohiki')   localStorage.setItem('ekohikiMemos', JSON.stringify(memoData.ekohiki));
+      else if (type === 'rules')     localStorage.setItem('ruleMemos',    JSON.stringify(memoData.rules));
       else localStorage.setItem(type === 'idea' ? 'ideaMemos' : 'maximMemos', JSON.stringify(memoData[type]));
     }
   }
@@ -2821,6 +2835,7 @@
     } else {
       document.getElementById('memoIdeaSection').style.display = '';
       document.getElementById('memoHabitSection').style.display = 'none';
+      document.getElementById('memoRuleFields').style.display = 'none';
       const input = document.getElementById('memoInput');
       input.placeholder = placeholders[type];
       restoreModalDraft('memo_' + type, input);
@@ -2834,7 +2849,9 @@
     document.getElementById('tab-idea-memo').classList.toggle('active', tab === 'idea');
     document.getElementById('tab-ekohiki-memo').classList.toggle('active', tab === 'ekohiki');
     document.getElementById('tab-habit-memo').classList.toggle('active', tab === 'habit');
-    document.getElementById('memoIdeaSection').style.display  = (tab === 'idea' || tab === 'ekohiki') ? '' : 'none';
+    document.getElementById('tab-rules-memo').classList.toggle('active', tab === 'rules');
+    document.getElementById('memoIdeaSection').style.display  = (tab === 'idea' || tab === 'ekohiki' || tab === 'rules') ? '' : 'none';
+    document.getElementById('memoRuleFields').style.display   = tab === 'rules' ? '' : 'none';
     document.getElementById('memoHabitSection').style.display = tab === 'habit' ? '' : 'none';
     if (tab === 'idea') {
       currentMemoType = 'idea';
@@ -2845,6 +2862,13 @@
       currentMemoType = 'ekohiki';
       document.getElementById('memoInput').placeholder = 'えこひいきされる技術を書き留めてください...';
       restoreModalDraft('memo_ekohiki', document.getElementById('memoInput'));
+      renderMemoEntries();
+    } else if (tab === 'rules') {
+      currentMemoType = 'rules';
+      document.getElementById('memoInput').placeholder = '振り返りなどで決めたことを1つ書いてください...';
+      restoreModalDraft('memo_rules', document.getElementById('memoInput'));
+      restoreModalDraft('memo_rules_reason', document.getElementById('memoRuleReason'));
+      document.getElementById('memoRuleDate').value = selectedDate || todayStr();
       renderMemoEntries();
     } else {
       renderHabitEntries();
@@ -2872,10 +2896,19 @@
   async function saveMemoEntry() {
     const text = document.getElementById('memoInput').value.trim();
     if (!text) { alert('内容を入力してください。'); return; }
-    memoData[currentMemoType].unshift({ id: generateId(), text, createdAt: new Date().toISOString() });
+    const entry = { id: generateId(), text, createdAt: new Date().toISOString() };
+    if (currentMemoType === 'rules') {
+      entry.reason    = document.getElementById('memoRuleReason').value.trim();
+      entry.decidedOn = document.getElementById('memoRuleDate').value || todayStr();
+    }
+    memoData[currentMemoType].unshift(entry);
     await saveMemos(currentMemoType);
     clearModalDraft('memo_' + currentMemoType);
     document.getElementById('memoInput').value = '';
+    if (currentMemoType === 'rules') {
+      clearModalDraft('memo_rules_reason');
+      document.getElementById('memoRuleReason').value = '';
+    }
     renderMemoEntries();
     if (currentMemoType === 'maxim') updateMaximBanner();
     if (currentMemoType === 'ekohiki') updateEkohikiBanner();
@@ -2907,6 +2940,14 @@
       <button class="btn btn-secondary btn-sm" onclick="cancelMemoEdit('${id}')">キャンセル</button>
       <button class="btn btn-primary btn-sm" onclick="saveMemoEdit('${id}')">保存</button>`;
     editArea.appendChild(ta);
+    if (currentMemoType === 'rules') {
+      const esc = v => String(v || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+      const extra = document.createElement('div');
+      extra.innerHTML = `
+        <div class="memo-rule-edit-row"><label>決めた日</label><input type="date" class="rule-edit-date" value="${esc(entry.decidedOn)}"></div>
+        <div class="memo-rule-edit-row"><label>理由</label><input type="text" class="rule-edit-reason" value="${esc(entry.reason)}" placeholder="なぜそう決めたか（任意）"></div>`;
+      editArea.appendChild(extra);
+    }
     editArea.appendChild(actions);
     div.insertBefore(editArea, textEl.nextSibling);
   }
@@ -2924,6 +2965,10 @@
     const idx = memoData[currentMemoType].findIndex(e => e.id === id);
     if (idx === -1) return;
     memoData[currentMemoType][idx].text = newText;
+    if (currentMemoType === 'rules') {
+      memoData.rules[idx].reason    = div.querySelector('.rule-edit-reason').value.trim();
+      memoData.rules[idx].decidedOn = div.querySelector('.rule-edit-date').value || memoData.rules[idx].decidedOn;
+    }
     await saveMemos(currentMemoType);
     renderMemoEntries();
     if (currentMemoType === 'maxim') updateMaximBanner();
@@ -2939,11 +2984,18 @@
       const div = document.createElement('div');
       div.className = 'memo-entry';
       div.id = `memo-entry-${e.id}`;
+      const isRule  = currentMemoType === 'rules';
+      const dateTxt = isRule && e.decidedOn
+        ? '決めた日 ' + new Date(e.decidedOn + 'T00:00:00').toLocaleDateString('ja-JP')
+        : new Date(e.createdAt).toLocaleDateString('ja-JP');
+      const reasonHtml = isRule && e.reason
+        ? `<div class="memo-entry-reason">理由：${linkifyText(e.reason)}</div>` : '';
       div.innerHTML = `
-        <div class="memo-entry-date">${new Date(e.createdAt).toLocaleDateString('ja-JP')}</div>
+        <div class="memo-entry-date">${dateTxt}</div>
         <div class="memo-entry-text">${linkifyText(e.text)}</div>
+        ${reasonHtml}
         <button class="btn-delete-memo" onclick="deleteMemoEntry('${currentMemoType}','${e.id}')">&#x2715;</button>`;
-      if (currentMemoType === 'idea' || currentMemoType === 'ekohiki') {
+      if (currentMemoType === 'idea' || currentMemoType === 'ekohiki' || isRule) {
         const editBtn = document.createElement('button');
         editBtn.className = 'btn-delete-memo';
         editBtn.style.cssText = 'right:34px;color:#3498db;';
@@ -3634,7 +3686,7 @@
       closeFn();
     });
   }
-  bindOverlayClose('memoModal',        closeMemoModal,        ['memoInput']);
+  bindOverlayClose('memoModal',        closeMemoModal,        ['memoInput','memoRuleReason']);
   bindOverlayClose('goalModal',        closeGoalModal,        ['goalInput','goalWeekInput','goalMonthInput']);
   bindOverlayClose('likedislikeModal', closeLikeDislikeModal, ['ldInput']);
   bindOverlayClose('learningModal',    closeLearningModal,    []);   // 閲覧のみ
@@ -3649,7 +3701,7 @@
     const isOpen = m => { const x = document.getElementById(m); return x && x.style.display === 'flex'; };
 
     // モーダル内の入力欄はモーダルの保存へ
-    if (isOpen('memoModal')        && id === 'memoInput') { e.preventDefault(); saveMemoEntry(); return; }
+    if (isOpen('memoModal') && /^(memoInput|memoRuleReason|memoRuleDate)$/.test(id)) { e.preventDefault(); saveMemoEntry(); return; }
     if (isOpen('likedislikeModal') && id === 'ldInput')   { e.preventDefault(); saveLDEntry();   return; }
     if (isOpen('goalModal') && /^goal(Input|WeekInput|MonthInput)$/.test(id)) { e.preventDefault(); saveGoal(); return; }
 
@@ -3667,6 +3719,9 @@
   // 入力のたびに下書きを保存する
   document.getElementById('memoInput').addEventListener('input', e => {
     if (currentMemoType) saveModalDraft('memo_' + currentMemoType, e.target);
+  });
+  document.getElementById('memoRuleReason').addEventListener('input', e => {
+    saveModalDraft('memo_rules_reason', e.target);
   });
   document.getElementById('ldInput').addEventListener('input', e => {
     if (currentLDTab) saveModalDraft('ld_' + currentLDTab, e.target);
