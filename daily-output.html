@@ -570,6 +570,11 @@
     .memo-entry:hover { border-color: var(--line); box-shadow: 0 3px 12px rgba(20,26,34,.06); }
     .memo-entry-date { font-size: 11px; color: var(--text-faint); margin-bottom: 4px; }
     .memo-entry-text { font-size: 13px; color: var(--text); white-space: pre-wrap; line-height: 1.65; word-break: break-word; }
+    .memo-entry-title {
+      font-family: var(--font-serif); font-size: 15px; font-weight: 700; color: var(--ink-800);
+      border-left: 3px solid var(--vermilion); padding-left: 9px; margin: 2px 0 6px; line-height: 1.5;
+      word-break: break-word;
+    }
     .memo-entry-reason { font-size: 12px; color: var(--text-soft); white-space: pre-wrap; line-height: 1.6; margin-top: 4px; word-break: break-word; }
     .memo-rule-edit-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
     .memo-rule-edit-row label { font-size: 11px; color: var(--text-soft); font-weight: 700; width: 56px; flex-shrink: 0; }
@@ -1030,10 +1035,14 @@
     </div>
     <!-- アイデア入力エリア -->
     <div id="memoIdeaSection">
+      <!-- 自分の決めごと用：日付・題名（本文の上） -->
+      <div class="habit-form-grid memo-rule-only" style="display:none;">
+        <div class="habit-form-row"><label>日付</label><input type="date" id="memoRuleDate"></div>
+        <div class="habit-form-row"><label>題名</label><input type="text" id="memoRuleTitle" placeholder="決めたことを一言で"></div>
+      </div>
       <textarea class="lined-textarea" id="memoInput" placeholder=""></textarea>
-      <!-- 自分の決めごと用の追加欄 -->
-      <div id="memoRuleFields" class="habit-form-grid" style="display:none;margin-top:8px;">
-        <div class="habit-form-row"><label>決めた日</label><input type="date" id="memoRuleDate"></div>
+      <!-- 自分の決めごと用：理由（本文の下） -->
+      <div class="habit-form-grid memo-rule-only" style="display:none;margin-top:8px;">
         <div class="habit-form-row"><label>理由</label><input type="text" id="memoRuleReason" placeholder="なぜそう決めたか（任意）"></div>
       </div>
       <div class="form-actions" style="margin-top:10px;">
@@ -2835,7 +2844,7 @@
     } else {
       document.getElementById('memoIdeaSection').style.display = '';
       document.getElementById('memoHabitSection').style.display = 'none';
-      document.getElementById('memoRuleFields').style.display = 'none';
+      document.querySelectorAll('.memo-rule-only').forEach(el => el.style.display = 'none');
       const input = document.getElementById('memoInput');
       input.placeholder = placeholders[type];
       restoreModalDraft('memo_' + type, input);
@@ -2851,7 +2860,7 @@
     document.getElementById('tab-habit-memo').classList.toggle('active', tab === 'habit');
     document.getElementById('tab-rules-memo').classList.toggle('active', tab === 'rules');
     document.getElementById('memoIdeaSection').style.display  = (tab === 'idea' || tab === 'ekohiki' || tab === 'rules') ? '' : 'none';
-    document.getElementById('memoRuleFields').style.display   = tab === 'rules' ? '' : 'none';
+    document.querySelectorAll('.memo-rule-only').forEach(el => el.style.display = tab === 'rules' ? '' : 'none');
     document.getElementById('memoHabitSection').style.display = tab === 'habit' ? '' : 'none';
     if (tab === 'idea') {
       currentMemoType = 'idea';
@@ -2865,8 +2874,9 @@
       renderMemoEntries();
     } else if (tab === 'rules') {
       currentMemoType = 'rules';
-      document.getElementById('memoInput').placeholder = '振り返りなどで決めたことを1つ書いてください...';
+      document.getElementById('memoInput').placeholder = '内容（具体的に何をどうするか）';
       restoreModalDraft('memo_rules', document.getElementById('memoInput'));
+      restoreModalDraft('memo_rules_title', document.getElementById('memoRuleTitle'));
       restoreModalDraft('memo_rules_reason', document.getElementById('memoRuleReason'));
       document.getElementById('memoRuleDate').value = selectedDate || todayStr();
       renderMemoEntries();
@@ -2895,9 +2905,13 @@
 
   async function saveMemoEntry() {
     const text = document.getElementById('memoInput').value.trim();
-    if (!text) { alert('内容を入力してください。'); return; }
+    const isRule = currentMemoType === 'rules';
+    const title  = isRule ? document.getElementById('memoRuleTitle').value.trim() : '';
+    if (isRule && !title) { alert('題名を入力してください。'); return; }
+    if (!isRule && !text) { alert('内容を入力してください。'); return; }
     const entry = { id: generateId(), text, createdAt: new Date().toISOString() };
-    if (currentMemoType === 'rules') {
+    if (isRule) {
+      entry.title     = title;
       entry.reason    = document.getElementById('memoRuleReason').value.trim();
       entry.decidedOn = document.getElementById('memoRuleDate').value || todayStr();
     }
@@ -2907,7 +2921,9 @@
     document.getElementById('memoInput').value = '';
     if (currentMemoType === 'rules') {
       clearModalDraft('memo_rules_reason');
+      clearModalDraft('memo_rules_title');
       document.getElementById('memoRuleReason').value = '';
+      document.getElementById('memoRuleTitle').value = '';
     }
     renderMemoEntries();
     if (currentMemoType === 'maxim') updateMaximBanner();
@@ -2930,6 +2946,7 @@
     const textEl = div.querySelector('.memo-entry-text');
     if (div.querySelector('.memo-entry-edit-area')) return; // already editing
     textEl.style.display = 'none';
+    div.querySelectorAll('.memo-entry-title, .memo-entry-reason').forEach(el => el.style.display = 'none');
     const editArea = document.createElement('div');
     editArea.className = 'memo-entry-edit-area';
     const ta = document.createElement('textarea');
@@ -2939,14 +2956,21 @@
     actions.innerHTML = `
       <button class="btn btn-secondary btn-sm" onclick="cancelMemoEdit('${id}')">キャンセル</button>
       <button class="btn btn-primary btn-sm" onclick="saveMemoEdit('${id}')">保存</button>`;
-    editArea.appendChild(ta);
     if (currentMemoType === 'rules') {
       const esc = v => String(v || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
-      const extra = document.createElement('div');
-      extra.innerHTML = `
-        <div class="memo-rule-edit-row"><label>決めた日</label><input type="date" class="rule-edit-date" value="${esc(entry.decidedOn)}"></div>
+      const top = document.createElement('div');
+      top.innerHTML = `
+        <div class="memo-rule-edit-row"><label>日付</label><input type="date" class="rule-edit-date" value="${esc(entry.decidedOn)}"></div>
+        <div class="memo-rule-edit-row" style="margin-bottom:5px;"><label>題名</label><input type="text" class="rule-edit-title" value="${esc(entry.title)}" placeholder="決めたことを一言で"></div>`;
+      ta.placeholder = '内容（具体的に何をどうするか）';
+      const bottom = document.createElement('div');
+      bottom.innerHTML = `
         <div class="memo-rule-edit-row"><label>理由</label><input type="text" class="rule-edit-reason" value="${esc(entry.reason)}" placeholder="なぜそう決めたか（任意）"></div>`;
-      editArea.appendChild(extra);
+      editArea.appendChild(top);
+      editArea.appendChild(ta);
+      editArea.appendChild(bottom);
+    } else {
+      editArea.appendChild(ta);
     }
     editArea.appendChild(actions);
     div.insertBefore(editArea, textEl.nextSibling);
@@ -2955,17 +2979,22 @@
   function cancelMemoEdit(id) {
     const div = document.getElementById(`memo-entry-${id}`);
     div.querySelector('.memo-entry-text').style.display = '';
+    div.querySelectorAll('.memo-entry-title, .memo-entry-reason').forEach(el => el.style.display = '');
     div.querySelector('.memo-entry-edit-area')?.remove();
   }
 
   async function saveMemoEdit(id) {
     const div = document.getElementById(`memo-entry-${id}`);
     const newText = div.querySelector('.memo-entry-edit-area textarea').value.trim();
-    if (!newText) { alert('内容を入力してください。'); return; }
+    const isRule  = currentMemoType === 'rules';
+    const newTitle = isRule ? div.querySelector('.rule-edit-title').value.trim() : '';
+    if (isRule && !newTitle) { alert('題名を入力してください。'); return; }
+    if (!isRule && !newText) { alert('内容を入力してください。'); return; }
     const idx = memoData[currentMemoType].findIndex(e => e.id === id);
     if (idx === -1) return;
     memoData[currentMemoType][idx].text = newText;
-    if (currentMemoType === 'rules') {
+    if (isRule) {
+      memoData.rules[idx].title     = newTitle;
       memoData.rules[idx].reason    = div.querySelector('.rule-edit-reason').value.trim();
       memoData.rules[idx].decidedOn = div.querySelector('.rule-edit-date').value || memoData.rules[idx].decidedOn;
     }
@@ -2986,13 +3015,16 @@
       div.id = `memo-entry-${e.id}`;
       const isRule  = currentMemoType === 'rules';
       const dateTxt = isRule && e.decidedOn
-        ? '決めた日 ' + new Date(e.decidedOn + 'T00:00:00').toLocaleDateString('ja-JP')
+        ? new Date(e.decidedOn + 'T00:00:00').toLocaleDateString('ja-JP')
         : new Date(e.createdAt).toLocaleDateString('ja-JP');
       const reasonHtml = isRule && e.reason
         ? `<div class="memo-entry-reason">理由：${linkifyText(e.reason)}</div>` : '';
+      const titleHtml = isRule && e.title
+        ? `<div class="memo-entry-title">${linkifyText(e.title)}</div>` : '';
       div.innerHTML = `
         <div class="memo-entry-date">${dateTxt}</div>
-        <div class="memo-entry-text">${linkifyText(e.text)}</div>
+        ${titleHtml}
+        <div class="memo-entry-text">${linkifyText(e.text || '')}</div>
         ${reasonHtml}
         <button class="btn-delete-memo" onclick="deleteMemoEntry('${currentMemoType}','${e.id}')">&#x2715;</button>`;
       if (currentMemoType === 'idea' || currentMemoType === 'ekohiki' || isRule) {
@@ -3686,7 +3718,7 @@
       closeFn();
     });
   }
-  bindOverlayClose('memoModal',        closeMemoModal,        ['memoInput','memoRuleReason']);
+  bindOverlayClose('memoModal',        closeMemoModal,        ['memoInput','memoRuleTitle','memoRuleReason']);
   bindOverlayClose('goalModal',        closeGoalModal,        ['goalInput','goalWeekInput','goalMonthInput']);
   bindOverlayClose('likedislikeModal', closeLikeDislikeModal, ['ldInput']);
   bindOverlayClose('learningModal',    closeLearningModal,    []);   // 閲覧のみ
@@ -3701,7 +3733,7 @@
     const isOpen = m => { const x = document.getElementById(m); return x && x.style.display === 'flex'; };
 
     // モーダル内の入力欄はモーダルの保存へ
-    if (isOpen('memoModal') && /^(memoInput|memoRuleReason|memoRuleDate)$/.test(id)) { e.preventDefault(); saveMemoEntry(); return; }
+    if (isOpen('memoModal') && /^(memoInput|memoRuleTitle|memoRuleReason|memoRuleDate)$/.test(id)) { e.preventDefault(); saveMemoEntry(); return; }
     if (isOpen('likedislikeModal') && id === 'ldInput')   { e.preventDefault(); saveLDEntry();   return; }
     if (isOpen('goalModal') && /^goal(Input|WeekInput|MonthInput)$/.test(id)) { e.preventDefault(); saveGoal(); return; }
 
@@ -3722,6 +3754,9 @@
   });
   document.getElementById('memoRuleReason').addEventListener('input', e => {
     saveModalDraft('memo_rules_reason', e.target);
+  });
+  document.getElementById('memoRuleTitle').addEventListener('input', e => {
+    saveModalDraft('memo_rules_title', e.target);
   });
   document.getElementById('ldInput').addEventListener('input', e => {
     if (currentLDTab) saveModalDraft('ld_' + currentLDTab, e.target);
