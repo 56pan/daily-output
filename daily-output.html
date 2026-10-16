@@ -732,6 +732,8 @@
     .cat-reading     { background: var(--gold); }
     .cat-esl         { background: #b5476f; }
     .cat-english     { background: #8a5a44; }
+    .cat-voicy-mb    { background: #5f7a3a; }
+    .cat-voicy-other { background: #4f8a9e; }
     .cat-biz         { background: #ad4136; }
     .cat-challenge60 { background: #d4622a; }
     .cat-daily-review{ background: #2f8f7d; }
@@ -3464,15 +3466,17 @@
     { value: '',            label: 'カテゴリなし',         cls: '' },
     { value: 'bookclub',    label: '読書部',               cls: 'cat-bookclub' },
     { value: 'news',        label: 'ニュース',             cls: 'cat-news' },
-    { value: 'challenge60', label: '60日CHALLENGE',        cls: 'cat-challenge60' },
     { value: 'esl',         label: 'ESL',                  cls: 'cat-esl' },
     { value: 'english',     label: '英語',                 cls: 'cat-english' },
+    { value: 'voicy_mb',    label: 'Voicy-MBさん',         cls: 'cat-voicy-mb' },
+    { value: 'voicy_other', label: 'Voicy-その他',         cls: 'cat-voicy-other' },
     { value: 'reading',     label: '読書',                 cls: 'cat-reading' },
     { value: 'daily_review',label: '1日の振り返り',        cls: 'cat-daily-review' },
     { value: 'week_review', label: '週の振り返り',         cls: 'cat-week-review' },
     { value: 'month_review',label: '月の振り返り',         cls: 'cat-month-review' },
     { value: 'other',       label: 'その他',               cls: 'cat-other' },
     // 使わなくなったカテゴリ：記録の表示・絞り込み・編集では残し、新規の選択肢には出さない
+    { value: 'challenge60', label: '60日CHALLENGE',        cls: 'cat-challenge60', hidden: true },
     { value: 'biz',         label: '事業候補生',           cls: 'cat-biz', hidden: true },
   ];
   // 廃止したカテゴリの記録を統合先へ移す（対象が無ければ何もしない）
