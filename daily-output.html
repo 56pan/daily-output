@@ -270,7 +270,7 @@
       margin-bottom: 9px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
     }
     .todo-item {
-      display: flex; align-items: flex-start; gap: 8px;
+      display: flex; align-items: flex-start; gap: 5px;
       background: var(--gold-soft); border: 1px solid #ecd9ae;
       border-left: 3px solid var(--gold); border-radius: 4px 10px 10px 4px;
       padding: 8px 10px; font-size: 12px; color: var(--text);
@@ -299,7 +299,7 @@
       background: var(--surface); border-color: var(--line); color: var(--text);
     }
     .todo-time:hover::after { content: ' ✎'; }
-    .todo-time.zero { color: var(--line); }
+    .todo-time.zero { color: var(--line); min-width: 20px; padding: 0 3px; }
     .todo-time.running { color: var(--vermilion); font-weight: 700; }
     /* ===== FOCUS TIMER (15分集中 + 3分休憩) ===== */
     .focus-timer {
@@ -380,6 +380,25 @@
       font-family: inherit; transition: all .18s;
     }
     .btn-todo-timer:hover { border-color: var(--vermilion); color: var(--vermilion); }
+    /* 📅・× の小ボタン（タイマーボタンと同じ大きさ） */
+    .btn-todo-icon {
+      flex-shrink: 0; align-self: center;
+      width: 19px; height: 22px; padding: 0; line-height: 1;
+      background: none; border: 1px solid transparent; border-radius: 6px;
+      color: var(--text-faint); font-size: 11px; cursor: pointer; font-family: inherit;
+      transition: all .18s;
+    }
+    .btn-todo-icon:hover { background: var(--surface); border-color: var(--line); color: var(--text); }
+    .btn-todo-icon.del:hover { border-color: var(--vermilion); color: var(--vermilion); }
+    .todo-age { font-size: 10px; color: var(--gold); margin-left: 6px; white-space: nowrap; }
+    .todo-age.old { color: var(--vermilion); font-weight: 700; }
+    .todo-task-label { font-size: 10px; color: var(--text-faint); margin: 6px 0 3px; border-top: 1px dashed var(--line-soft); padding-top: 5px; }
+    .todo-add-input {
+      width: 100%; box-sizing: border-box; margin-top: 2px;
+      border: 1px dashed var(--line); border-radius: 8px; background: transparent;
+      padding: 6px 9px; font-size: 12px; font-family: inherit; color: var(--text);
+    }
+    .todo-add-input:focus { outline: none; border-style: solid; border-color: var(--gold); background: var(--surface); }
     .btn-todo-timer.running {
       background: var(--vermilion); border-color: var(--vermilion); color: #fff;
     }
@@ -2146,7 +2165,255 @@
     label.appendChild(btn);
   }
 
+  // ===== 今日のToDo（繰り越しタスク方式） =====
+  // この日以降は「習慣＋タスク」。⑪明日のToDoは翌日のタスクとして取り込む
+  const TASKS_START = '2026-10-19';
+
+  function habitsForDate(dateStr) {
+    const dow = new Date(dateStr).getDay();
+    return (memoData.habits || []).filter(h =>
+      !h.paused && (!h.schedule || h.schedule === 'daily' ? true : (h.weekdays || []).includes(dow))
+    );
+  }
+  function tasksForDate(dateStr) {
+    return (memoData.tasks || []).filter(t =>
+      !t.deleted && t.createdOn <= dateStr && (!t.doneOn || t.doneOn >= dateStr)
+    );
+  }
+  function daysBetween(a, b) {
+    return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
+  }
+
+  // ⑪明日のToDo の各行をタスクへ（取り込み済み・削除済みは再取り込みしない）
+  function importTodoLinesAsTasks() {
+    const data = loadData();
+    const today = todayStr();
+    const known = new Set((memoData.tasks || []).map(t => t.source).filter(Boolean));
+    let added = false, timersMoved = false;
+    Object.keys(data).forEach(dateStr => {
+      const target = offsetDate(dateStr, 1);
+      if (target < TASKS_START || target > today) return;
+      (data[dateStr] || []).forEach(o => {
+        (o.tomorrow_todo || '').split('\n').map(l => l.trim()).filter(Boolean).forEach(line => {
+          const source = `todo:${dateStr}:${line}`;
+          if (known.has(source)) return;
+          known.add(source);
+          const task = { id: generateId(), text: line, createdOn: target, doneOn: null, deleted: false, source };
+          // 旧方式でその日にチェック・計測していた分を引き継ぐ
+          if ((checksData.todoChecks[target] || {})[line]) task.doneOn = target;
+          const tm = checksData.todoTimers[target];
+          if (tm && tm[line]) { tm['task:' + task.id] = tm[line]; delete tm[line]; timersMoved = true; }
+          memoData.tasks.push(task);
+          added = true;
+        });
+      });
+    });
+    if (added) saveMemos('tasks');
+    if (timersMoved) saveChecks();
+  }
+
+  function calcTodoRateNew(dateStr) {
+    const checks = loadTodoChecks(dateStr);
+    const habits = habitsForDate(dateStr);
+    const tasks  = tasksForDate(dateStr);
+    return {
+      total: habits.length + tasks.length,
+      done:  habits.filter(h => !!checks[`habit:${h.id}`]).length + tasks.filter(t => t.doneOn === dateStr).length,
+    };
+  }
+
+  // Googleカレンダーの予定作成画面のURL（保存はユーザーが押すまで行われない）
+  function gcalUrl(title, dateStr, timeStr) {
+    const pad = n => String(n).padStart(2, '0');
+    const fmt = d => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+    const m = (timeStr || '').match(/(\d{1,2})[:：](\d{2})(?:\s*[-~〜ー－]\s*(\d{1,2})[:：](\d{2}))?/);
+    let dates;
+    if (m) {
+      const [y, mo, d] = dateStr.split('-').map(Number);
+      const start = new Date(y, mo - 1, d, +m[1], +m[2]);
+      let end = m[3] ? new Date(y, mo - 1, d, +m[3], +m[4]) : new Date(start.getTime() + 30 * 60000);
+      if (end <= start) end = new Date(start.getTime() + 30 * 60000);
+      dates = `${fmt(start)}/${fmt(end)}`;
+    } else {
+      dates = `${dateStr.replace(/-/g, '')}/${offsetDate(dateStr, 1).replace(/-/g, '')}`;
+    }
+    return 'https://calendar.google.com/calendar/render?action=TEMPLATE'
+      + `&text=${encodeURIComponent(title)}&dates=${dates}&ctz=Asia/Tokyo`;
+  }
+  function appendCalendarButton(label, title, dateStr, timeStr) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn-todo-icon';
+    b.textContent = '📅';
+    b.title = 'Googleカレンダーに予定を作成';
+    b.dataset.gcal = gcalUrl(title, dateStr, timeStr);
+    b.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      window.open(b.dataset.gcal, '_blank', 'noopener');
+    });
+    label.appendChild(b);
+  }
+
+  // 今日のToDoセクションだけを作り直す（入力中の右パネルには触らない）
+  function rerenderTodoSection(focusAdd) {
+    const old = document.getElementById('todayTodoSection');
+    if (!old) return;
+    const tmp = document.createElement('div');
+    appendTodoWithTasks(tmp);
+    const fresh = tmp.firstElementChild;
+    if (fresh) old.replaceWith(fresh);
+    if (focusAdd) document.getElementById('todoAddInput')?.focus();
+  }
+
+  async function addTask(text) {
+    memoData.tasks.push({ id: generateId(), text, createdOn: selectedDate, doneOn: null, deleted: false, source: 'manual' });
+    await saveMemos('tasks');
+  }
+  async function setTaskDone(id, done) {
+    const t = memoData.tasks.find(x => x.id === id);
+    if (!t) return;
+    t.doneOn = done ? selectedDate : null;
+    await saveMemos('tasks');
+  }
+  async function deleteTask(id) {
+    const t = memoData.tasks.find(x => x.id === id);
+    if (!t) return;
+    const a = checksData.activeTimer;
+    if (a && a.dateStr === selectedDate && a.key === `task:${id}`) await stopActiveTimer(false);
+    t.deleted = true;
+    await saveMemos('tasks');
+  }
+
+  function appendTodoWithTasks(container) {
+    importTodoLinesAsTasks();
+    const D = selectedDate;
+    const checks = loadTodoChecks(D);
+    const habitItems = habitsForDate(D);
+    const taskItems  = tasksForDate(D).sort((a, b) =>
+      (a.createdOn < b.createdOn ? -1 : a.createdOn > b.createdOn ? 1 : 0));   // 古いもの（残っているもの）が上
+
+    const sec = document.createElement('div');
+    sec.className = 'left-section';
+    sec.id = 'todayTodoSection';
+    const title = document.createElement('div');
+    title.className = 'left-section-title';
+    title.textContent = '今日のToDo';
+    const rateEl = document.createElement('span');
+    rateEl.id = 'todayTodoRate';
+    rateEl.style.cssText = 'font-size:11px;font-weight:600;color:#27ae60;background:#e8f8f5;border-radius:3px;padding:1px 5px;margin-left:4px;';
+    title.appendChild(rateEl);
+    const totalEl = document.createElement('span');
+    totalEl.id = 'todayTodoTotal';
+    totalEl.style.cssText = 'font-size:11px;font-weight:600;color:#a1651f;background:#fbf4e4;border-radius:3px;padding:1px 5px;';
+    title.appendChild(totalEl);
+    sec.appendChild(title);
+
+    function refreshTodoRate() {
+      const cbs = [...sec.querySelectorAll('input[type="checkbox"]')];
+      rateEl.textContent = `${cbs.filter(c => c.checked).length}/${cbs.length}`;
+    }
+
+    // 習慣（優先順位順）
+    habitItems.forEach(h => {
+      const label = document.createElement('label');
+      label.className = 'todo-item';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      const key = `habit:${h.id}`;
+      cb.checked = !!checks[key];
+      cb.addEventListener('change', async () => {
+        const a = checksData.activeTimer;
+        if (cb.checked && a && a.dateStr === D && a.key === key) await stopActiveTimer(false);
+        await saveTodoCheck(D, key, cb.checked);
+        refreshTodoRate();
+        refreshTimerUI();
+      });
+      const span = document.createElement('span');
+      span.className = 'todo-item-text';
+      span.innerHTML = (h.time ? `<span style="color:#aaa;font-size:10px;margin-right:5px;">${escHtml(h.time)}</span>` : '') + escHtml(h.content);
+      label.appendChild(cb);
+      label.appendChild(span);
+      appendTimerUI(label, key, h.content);
+      appendCalendarButton(label, h.content, D, h.time);
+      sec.appendChild(label);
+    });
+
+    // タスク（チェックするまで毎日繰り越し）
+    const lbl = document.createElement('div');
+    lbl.className = 'todo-task-label';
+    lbl.textContent = 'タスク';
+    if (habitItems.length) sec.appendChild(lbl);
+
+    taskItems.forEach(t => {
+      const label = document.createElement('label');
+      label.className = 'todo-item';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      const key = `task:${t.id}`;
+      cb.checked = t.doneOn === D;
+      cb.addEventListener('change', async () => {
+        const a = checksData.activeTimer;
+        if (cb.checked && a && a.dateStr === D && a.key === key) await stopActiveTimer(false);
+        await setTaskDone(t.id, cb.checked);
+        refreshTodoRate();
+        refreshTimerUI();
+      });
+      const span = document.createElement('span');
+      span.className = 'todo-item-text';
+      span.innerHTML = linkifyText(t.text);
+      const age = daysBetween(t.createdOn, D);
+      if (age > 0) {
+        const ageEl = document.createElement('span');
+        ageEl.className = 'todo-age' + (age >= 3 ? ' old' : '');
+        ageEl.textContent = `${age}日前から`;
+        span.appendChild(ageEl);
+      }
+      label.appendChild(cb);
+      label.appendChild(span);
+      appendTimerUI(label, key, t.text);
+      appendCalendarButton(label, t.text, D, '');
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn-todo-icon del';
+      del.textContent = '✕';
+      del.title = 'このタスクを削除';
+      del.addEventListener('click', async e => {
+        e.preventDefault(); e.stopPropagation();
+        await deleteTask(t.id);
+        rerenderTodoSection();
+      });
+      label.appendChild(del);
+      sec.appendChild(label);
+    });
+
+    // その場で追加
+    const add = document.createElement('input');
+    add.type = 'text';
+    add.id = 'todoAddInput';
+    add.className = 'todo-add-input';
+    add.placeholder = '＋ タスクを追加（Enter）';
+    add.addEventListener('keydown', async e => {
+      if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;   // 日本語変換の確定Enterは無視
+      e.preventDefault();
+      const text = add.value.trim();
+      if (!text) return;
+      add.value = '';
+      await addTask(text);
+      rerenderTodoSection(true);
+    });
+    sec.appendChild(add);
+
+    refreshTodoRate();
+    container.appendChild(sec);
+    refreshTimerUI(sec);
+    ensureTimerTick();
+  }
+
   function calcTodoRateForDate(dateStr) {
+    return dateStr >= TASKS_START ? calcTodoRateNew(dateStr) : calcTodoRateLegacy(dateStr);
+  }
+  // 切替日より前の日：習慣＋前日の⑪（以前の方式のまま）
+  function calcTodoRateLegacy(dateStr) {
     const data = loadData();
     const checks = loadTodoChecks(dateStr);
     const dayDow = new Date(dateStr).getDay();
@@ -2174,6 +2441,11 @@
   }
 
   function appendTodoPrevDay(container, data) {
+    if (selectedDate >= TASKS_START) { appendTodoWithTasks(container); return; }
+    appendTodoPrevDayLegacy(container, data);
+  }
+  // 切替日より前の日：習慣＋前日の⑪（以前の方式のまま）
+  function appendTodoPrevDayLegacy(container, data) {
     const prev = offsetDate(selectedDate, -1);
     const todoLines = (data[prev]||[]).flatMap(o =>
       (o.tomorrow_todo||'').split('\n').map(l=>l.trim()).filter(l=>l)
@@ -2682,7 +2954,7 @@
 
 
   // ===== MEMO DATA =====
-  let memoData = { idea: [], maxim: [], ekohiki: [], rules: [], goal: '', weeklyGoals: {}, monthlyGoals: {}, bookmarks: [], like: [], dislike: [], habits: [] };
+  let memoData = { idea: [], maxim: [], ekohiki: [], rules: [], tasks: [], goal: '', weeklyGoals: {}, monthlyGoals: {}, bookmarks: [], like: [], dislike: [], habits: [] };
 
   function getWeekKey(dateStr) {
     const d = new Date(dateStr), dow = (d.getDay()+6)%7;
@@ -2707,17 +2979,18 @@
       memoData.dislike      = JSON.parse(localStorage.getItem('dislikeMemos') || '[]');
       memoData.habits       = JSON.parse(localStorage.getItem('habitMemos')   || '[]');
       memoData.rules        = JSON.parse(localStorage.getItem('ruleMemos')    || '[]');
-    } catch { memoData = { idea: [], maxim: [], ekohiki: [], rules: [], goal: '', weeklyGoals: {}, monthlyGoals: {}, bookmarks: [], like: [], dislike: [], habits: [] }; }
+      memoData.tasks        = JSON.parse(localStorage.getItem('taskMemos')    || '[]');
+    } catch { memoData = { idea: [], maxim: [], ekohiki: [], rules: [], tasks: [], goal: '', weeklyGoals: {}, monthlyGoals: {}, bookmarks: [], like: [], dislike: [], habits: [] }; }
   }
 
   async function loadMemosFromFirestore() {
     try {
       const ref = db.collection('users').doc(currentUser.uid).collection('memos');
-      const [ideaDoc, maximDoc, ekohikiDoc, goalDoc, weekDoc, monthDoc, bmDoc, likeDoc, dislikeDoc, habitsDoc, rulesDoc] = await Promise.all([
+      const [ideaDoc, maximDoc, ekohikiDoc, goalDoc, weekDoc, monthDoc, bmDoc, likeDoc, dislikeDoc, habitsDoc, rulesDoc, tasksDoc] = await Promise.all([
         ref.doc('idea').get(), ref.doc('maxim').get(), ref.doc('ekohiki').get(), ref.doc('goal').get(),
         ref.doc('weeklyGoals').get(), ref.doc('monthlyGoals').get(),
         ref.doc('bookmarks').get(), ref.doc('like').get(), ref.doc('dislike').get(), ref.doc('habits').get(),
-        ref.doc('rules').get()
+        ref.doc('rules').get(), ref.doc('tasks').get()
       ]);
       memoData.idea         = ideaDoc.exists      ? ideaDoc.data().entries      || [] : [];
       memoData.maxim        = maximDoc.exists     ? maximDoc.data().entries     || [] : [];
@@ -2730,6 +3003,7 @@
       memoData.dislike      = dislikeDoc.exists   ? dislikeDoc.data().entries   || [] : [];
       memoData.habits       = habitsDoc.exists    ? habitsDoc.data().entries    || [] : [];
       memoData.rules        = rulesDoc.exists     ? rulesDoc.data().entries     || [] : [];
+      memoData.tasks        = tasksDoc.exists     ? tasksDoc.data().entries     || [] : [];
     } catch(e) { console.error('Memo load error:', e); }
   }
 
@@ -2752,6 +3026,7 @@
       else if (type === 'habits')    localStorage.setItem('habitMemos',   JSON.stringify(memoData.habits));
       else if (type === 'ekohiki')   localStorage.setItem('ekohikiMemos', JSON.stringify(memoData.ekohiki));
       else if (type === 'rules')     localStorage.setItem('ruleMemos',    JSON.stringify(memoData.rules));
+      else if (type === 'tasks')     localStorage.setItem('taskMemos',    JSON.stringify(memoData.tasks));
       else localStorage.setItem(type === 'idea' ? 'ideaMemos' : 'maximMemos', JSON.stringify(memoData[type]));
     }
   }
