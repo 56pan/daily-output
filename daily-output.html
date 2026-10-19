@@ -2223,6 +2223,7 @@
   }
 
   // Googleカレンダーの予定作成画面のURL（保存はユーザーが押すまで行われない）
+  const GCAL_ACCOUNT = 4;
   function gcalUrl(title, dateStr, timeStr) {
     const pad = n => String(n).padStart(2, '0');
     const fmt = d => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
@@ -2237,8 +2238,9 @@
     } else {
       dates = `${dateStr.replace(/-/g, '')}/${offsetDate(dateStr, 1).replace(/-/g, '')}`;
     }
-    return 'https://calendar.google.com/calendar/render?action=TEMPLATE'
-      + `&text=${encodeURIComponent(title)}&dates=${dates}&ctz=Asia/Tokyo`;
+    // u/N = ブラウザでログイン中のGoogleアカウントの番号（0始まり。アカウント切替メニューの並び順）
+    return `https://calendar.google.com/calendar/u/${GCAL_ACCOUNT}/r/eventedit`
+      + `?text=${encodeURIComponent(title)}&dates=${dates}&ctz=Asia/Tokyo`;
   }
   function appendCalendarButton(label, title, dateStr, timeStr) {
     const b = document.createElement('button');
