@@ -630,6 +630,18 @@
       color: var(--gold); opacity: 0.55; transition: opacity .18s, transform .18s;
     }
     .btn-bookmark-learning:hover { opacity: 1; transform: scale(1.15); }
+    /* ★の真下に置く「詳細」ボタン */
+    .btn-entry-detail {
+      position: absolute; top: 30px; right: 7px;
+      background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+      font-size: 10px; font-weight: 700; font-family: inherit; color: var(--text-soft);
+      padding: 2px 6px; cursor: pointer; line-height: 1.4; transition: all .18s;
+    }
+    .btn-entry-detail:hover { border-color: var(--indigo); color: var(--indigo); }
+    .learning-entry.has-detail-btn { padding-right: 46px; }
+    .entry-detail-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .entry-detail-date { font-family: var(--font-serif); font-size: 13.5px; font-weight: 700; color: var(--ink-800); }
+    .entry-detail-meta .category-badge { margin-bottom: 0; }
     .learning-filter-row {
       display: flex; flex-wrap: wrap; gap: 6px;
       padding: 8px 0 6px; border-bottom: 1px solid var(--line-soft); margin-bottom: 9px;
@@ -1127,6 +1139,18 @@
       <button class="btn btn-secondary" onclick="closeTimeEditModal()">キャンセル</button>
       <button class="btn btn-primary" onclick="saveTimeEdit()">保存</button>
     </div>
+  </div>
+</div>
+
+<!-- Entry Detail Modal（学びの一覧・ブックマークの上に重ねて開く） -->
+<div class="memo-modal" id="entryDetailModal" style="display:none;">
+  <div class="memo-modal-card">
+    <div class="memo-modal-header">
+      <h3>アウトプットの詳細</h3>
+      <button class="btn-close-modal" onclick="closeEntryDetail()">&#x2715;</button>
+    </div>
+    <div class="entry-detail-meta" id="entryDetailMeta"></div>
+    <div id="entryDetailBody"></div>
   </div>
 </div>
 
@@ -3660,6 +3684,7 @@
         item.appendChild(labelDiv);
         item.appendChild(textDiv);
         item.appendChild(delBtn);
+        if (entry) appendDetailButton(item, dateStr, entry.id);
         wrapper.appendChild(item);
 
         // ②④～⑧の補足フィールドを表示
@@ -3781,6 +3806,69 @@
       <label>カテゴリ</label>
       <select class="category-select" id="${id}">${opts}</select>
     </div>`;
+  }
+
+  // ===== アウトプットの詳細（全項目） =====
+  const DETAIL_SKIP_KEYS = new Set(['id', 'category', 'createdAt', 'updatedAt']);
+  const DETAIL_LEGACY_LABELS = { emotion: '今日の感情' };   // 今は入力欄が無い旧項目
+  function openEntryDetail(dateStr, entryId) {
+    const entry = (loadData()[dateStr] || []).find(o => o.id === entryId);
+    if (!entry) return;
+    const meta = document.getElementById('entryDetailMeta');
+    meta.innerHTML = '';
+    const d = document.createElement('span');
+    d.className = 'entry-detail-date';
+    d.textContent = formatDateJP(dateStr);
+    meta.appendChild(d);
+    if (entry.category) {
+      const cat = categoryInfo(entry.category);
+      const badge = document.createElement('span');
+      badge.className = `category-badge ${cat.cls}`;
+      badge.textContent = cat.label;
+      meta.appendChild(badge);
+    }
+
+    // 書いた時の順番（カテゴリごとの項目定義）→ 定義に無い旧項目
+    const keys = fieldsFor(entry.category).map(f => f.key);
+    Object.keys(entry).forEach(k => {
+      if (!keys.includes(k) && !DETAIL_SKIP_KEYS.has(k) && typeof entry[k] === 'string') keys.push(k);
+    });
+    const body = document.getElementById('entryDetailBody');
+    body.innerHTML = '';
+    keys.forEach(key => {
+      const val = entry[key];
+      if (!val || !String(val).trim()) return;
+      const item = document.createElement('div');
+      item.className = `learning-entry${key === 'conceptualization' ? ' conceptualization' : ''}`;
+      const label = document.createElement('div');
+      label.className = 'learning-entry-label';
+      label.textContent = DETAIL_LEGACY_LABELS[key] || fieldLabel(key, entry.category, { short: true });
+      const text = document.createElement('div');
+      text.className = 'learning-entry-text';
+      text.innerHTML = linkifyText(val);
+      item.appendChild(label);
+      item.appendChild(text);
+      body.appendChild(item);
+    });
+    if (!body.children.length) body.innerHTML = '<div class="empty-message">内容がありません</div>';
+
+    const modal = document.getElementById('entryDetailModal');
+    modal.style.display = 'flex';
+    modal.querySelector('.memo-modal-card').scrollTop = 0;
+  }
+  function closeEntryDetail() {
+    document.getElementById('entryDetailModal').style.display = 'none';
+  }
+  function appendDetailButton(card, dateStr, entryId) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-entry-detail';
+    btn.textContent = '詳細';
+    btn.title = 'このアウトプットの全項目を見る';
+    btn.addEventListener('click', e => { e.stopPropagation(); openEntryDetail(dateStr, entryId); });
+    card.style.position = 'relative';
+    card.classList.add('has-detail-btn');
+    card.appendChild(btn);
   }
 
   // ===== 学びの一覧 =====
@@ -3958,6 +4046,7 @@
         dateDiv.appendChild(catRow);
 
         // フィールド一覧
+        const cards = [];
         LEARNING_KEYS.forEach(key => {
           if (!o[key]) return;
           const item = document.createElement('div');
@@ -3982,8 +4071,12 @@
             });
             item.appendChild(bmBtn);
           }
+          cards.push({ key, item });
           dateDiv.appendChild(item);
         });
+        // 詳細ボタン：★のある③概念化カード、無ければ最初のカード
+        const target = (cards.find(c => c.key === 'conceptualization') || cards[0]);
+        if (target) appendDetailButton(target.item, dateStr, o.id);
       });
       list.appendChild(dateDiv);
     });
@@ -4007,6 +4100,7 @@
   bindOverlayClose('goalModal',        closeGoalModal,        ['goalInput','goalWeekInput','goalMonthInput']);
   bindOverlayClose('likedislikeModal', closeLikeDislikeModal, ['ldInput']);
   bindOverlayClose('learningModal',    closeLearningModal,    []);   // 閲覧のみ
+  bindOverlayClose('entryDetailModal', closeEntryDetail,      []);   // 閲覧のみ（下の一覧は閉じない）
   bindOverlayClose('bookmarkModal',    closeBookmarkModal,    []);   // 閲覧のみ
 
   // Ctrl+Enter（Macは Cmd+Enter）で、いま入力している場所に応じて保存する
